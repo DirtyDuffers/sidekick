@@ -177,7 +177,7 @@ document.addEventListener("click", (e)=>{
 
 /* ---------------- Router ---------------- */
 const SCREEN_RENDERERS = {}; // filled in by other sections: name -> function(container)
-const TAB_SCREENS = ["home","lessons","behaviours","skills","more"];
+const TAB_SCREENS = ["home","lessons","behaviours","skills","more","about"];
 // Baseline topbar content per screen, applied before the renderer runs.
 // This exists so a screen can never show another screen's leftover title —
 // a real bug: onboarding never called setTopbar, so reaching it via Reset
@@ -191,6 +191,7 @@ const SCREEN_TOPBAR_DEFAULTS = {
   behaviours: ["Behaviour guide", "Find management & training routes"],
   skills: ["Skills", ""],
   more: ["More", "Programmes, safety & data"],
+  about: ["About", "Sidekick"],
 };
 
 function setTabbarVisible(visible){
@@ -1254,8 +1255,6 @@ function renderMore(container){
       <input type="file" id="importFile" accept="application/json" style="display:none;">
       <button class="btn btn-danger btn-block" id="resetBtn" style="margin-top:8px;">Reset all data</button>
     </div>
-
-    <button class="row" id="aboutRow" style="margin-top:10px;"><div class="row-tab" style="background:var(--ink-soft)"></div><div class="row-body"><div class="row-title">About Sidekick</div><div class="row-meta">Version, credits & content notes</div></div><span class="row-chev">›</span></button>
   `;
 
   container.querySelectorAll("[data-dog]").forEach(r=>r.addEventListener("click", ()=>{
@@ -1275,7 +1274,6 @@ function renderMore(container){
     b.classList.add("selected");
     sk.setTheme(b.dataset.val);
   });
-  container.querySelector("#aboutRow").addEventListener("click", openAboutScreen);
   container.querySelector("#exportBtn").addEventListener("click", exportBackup);
   container.querySelector("#importBtn").addEventListener("click", ()=>container.querySelector("#importFile").click());
   container.querySelector("#importFile").addEventListener("change", importBackup);
@@ -1564,16 +1562,33 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 
-function openAboutScreen(){
+function pawLogoSVG(size){
+  return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" aria-hidden="true">
+    <circle cx="50" cy="50" r="50" fill="var(--forest)"/>
+    <circle cx="50" cy="60" r="19" fill="var(--canvas)"/>
+    <circle cx="27" cy="38" r="9.5" fill="var(--canvas)"/>
+    <circle cx="41" cy="24" r="10" fill="var(--canvas)"/>
+    <circle cx="59" cy="24" r="10" fill="var(--canvas)"/>
+    <circle cx="73" cy="38" r="9.5" fill="var(--canvas)"/>
+  </svg>`;
+}
+
+function renderAbout(container){
   const kb = sk.KB;
   const reviewStatus = kb.collections.lessons[0] && kb.collections.lessons[0].review_status;
-  sk.openModal(`
-    <div style="text-align:center; margin-bottom:4px;">
-      <div style="font-size:36px;">🐾</div>
-      <h3 style="margin-bottom:2px;">Sidekick</h3>
-      <p style="color:var(--ink-soft); font-size:13px; margin-bottom:0;">Version ${APP_VERSION}</p>
+  container.innerHTML = `
+    <div class="about-hero" style="text-align:center; margin-bottom:18px;">
+      ${pawLogoSVG(72)}
+      <h2 style="margin:12px 0 2px;">Sidekick</h2>
+      <p style="color:var(--ink-soft); font-size:13.5px; margin-bottom:0;">A calm, reward-based training companion for you and your dog.</p>
+    </div>
+
+    <div class="card" style="text-align:center;">
+      <h3 style="margin-bottom:6px;">☕ Enjoying Sidekick?</h3>
+      <p style="font-size:13.5px; color:var(--ink-soft);">This app is free and ad-free. If it's made training easier, a coffee would be very much appreciated!</p>
+      <a href="https://buymeacoffee.com/duffers" target="_blank" rel="noopener" style="display:inline-block; background:#FFDD00; color:#1a1a1a; font-size:14px; font-weight:800; padding:11px 22px; border-radius:10px; text-decoration:none;">☕ Buy Duffers a Coffee</a>
     </div>
 
     <div class="card">
@@ -1594,12 +1609,54 @@ function openAboutScreen(){
     ${kb.progression_note ? `<div class="section-label">A note on progression</div>
     <p style="font-size:13px; color:var(--ink-soft);">${sk.esc(kb.progression_note)}</p>` : ""}
 
-    <div class="section-label">Data & privacy</div>
-    <p style="font-size:13px; color:var(--ink-soft);">Everything you enter — dog profiles, sessions, skill progress — stays on this device in your browser's local storage. Nothing is sent anywhere. Back up or move devices anytime from Data → Export backup.</p>
+    <div class="section-label">More from Duffers</div>
+    <div class="card">
+      <h3 style="margin-bottom:4px;">🐾 Also logging your travels?</h3>
+      <p style="font-size:13px; color:var(--ink-soft);">Waypoints is a personal travel log — everywhere you've been, and everywhere you're going. Same no-accounts, no-tracking approach.</p>
+      <a href="https://dirtyduffers.github.io/waypoints/" target="_blank" rel="noopener" style="display:inline-block; background:#2F6B5E; color:#fff; font-size:13px; font-weight:700; padding:9px 16px; border-radius:10px; text-decoration:none;">Open Waypoints ↗</a>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:4px;">⚽ Follow Liverpool FC?</h3>
+      <p style="font-size:13px; color:var(--ink-soft);">LFC Fixtures covers every result back to 1894, head-to-head records, and an away-day trip planner.</p>
+      <a href="https://dirtyduffers.github.io/LFC-Fixtures/" target="_blank" rel="noopener" style="display:inline-block; background:#C8102E; color:#fff; font-size:13px; font-weight:700; padding:9px 16px; border-radius:10px; text-decoration:none;">Open LFC Fixtures ↗</a>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:4px;">🥷 Have a Ninja appliance?</h3>
+      <p style="font-size:13px; color:var(--ink-soft);">Ninja Hub covers cook guides for the Blender, Air Fryer, and Woodfire Grill, all in one place.</p>
+      <a href="https://dirtyduffers.github.io/Ninja-Hub/" target="_blank" rel="noopener" style="display:inline-block; background:#C08A2B; color:#fff; font-size:13px; font-weight:700; padding:9px 16px; border-radius:10px; text-decoration:none;">Open Ninja Hub ↗</a>
+    </div>
 
-    <p style="text-align:center; font-size:11px; color:var(--ink-soft); margin-top:18px;">Built for training with care, not for training data.</p>
-  `);
+    <div class="section-label">Add to Home Screen</div>
+    <div class="card">
+      <div style="margin-bottom:10px;">
+        <div style="font-size:13px; font-weight:700; margin-bottom:3px;">🍎 iPhone / iPad (Safari)</div>
+        <div style="background:var(--canvas); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:12.5px;">Tap Share → Add to Home Screen → Add</div>
+      </div>
+      <div style="margin-bottom:10px;">
+        <div style="font-size:13px; font-weight:700; margin-bottom:3px;">🤖 Android (Chrome)</div>
+        <div style="background:var(--canvas); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:12.5px;">Tap ⋮ → Add to Home screen or Install app</div>
+      </div>
+      <div>
+        <div style="font-size:13px; font-weight:700; margin-bottom:3px;">🪟 Windows / Mac</div>
+        <div style="background:var(--canvas); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:12.5px;">Chrome/Edge: click the install icon in the address bar</div>
+      </div>
+    </div>
+
+    <div class="section-label">Data & privacy</div>
+    <div class="card">
+      <p style="font-size:13px; margin-bottom:0;">Everything you enter — dog profiles, sessions, skill progress — stays on this device in your browser's local storage. Nothing is sent anywhere. Back up or move devices anytime from More → Data → Export backup.</p>
+    </div>
+
+    <div class="section-label">Author</div>
+    <div class="card">
+      <p style="font-size:13px; margin-bottom:0;">Created by <strong>Duffers</strong> — built for training with care, not for training data.</p>
+    </div>
+
+    <p style="text-align:center; font-size:11.5px; color:var(--ink-soft); margin-top:8px;">Sidekick v${APP_VERSION} · by Duffers</p>
+  `;
 }
+
+sk.SCREEN_RENDERERS.about = renderAbout;
 
 function confirmReset(){
   sk.openModal(`
