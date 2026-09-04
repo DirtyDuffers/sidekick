@@ -168,11 +168,22 @@ document.addEventListener("click", (e)=>{
 
 /* ---------------- Router ---------------- */
 const SCREEN_RENDERERS = {}; // filled in by other sections: name -> function(container)
+const TAB_SCREENS = ["home","lessons","behaviours","skills","more"];
+
+function setTabbarVisible(visible){
+  document.getElementById("tabbar").style.display = visible ? "flex" : "none";
+}
 
 function goScreen(name, opts){
   opts = opts || {};
   currentScreen = name;
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.screen===name));
+  // Onboarding isn't a tab destination — keep the tab bar hidden so a
+  // brand-new user can't tap away mid-setup. Any other named screen (all
+  // real tabs) restores it. Session/programme flows bypass goScreen
+  // entirely while they're running (see startSession/startProgramme) so
+  // in-progress reps can't be abandoned via a stray tab tap.
+  setTabbarVisible(TAB_SCREENS.includes(name));
   render(opts);
   window.scrollTo(0,0);
 }
@@ -207,13 +218,16 @@ window.__sk = {
   splitPipe, splitSemi, getCategoryVar, getCategoryIcon,
   getCurrentDog, ensureCurrentDog, dogSkillState, setDogSkillState, dogLessonProgress,
   uid, esc, fmtDate, daysAgo, showToast, openModal, closeModal,
-  goScreen, render, SCREEN_RENDERERS, saveDB, loadKnowledgeBase, loadDB
+  goScreen, render, SCREEN_RENDERERS, saveDB, loadKnowledgeBase, loadDB, setTabbarVisible
 };
 
 /* ---------------- Boot ---------------- */
 async function boot(){
   DB = loadDB();
   ensureCurrentDog();
+  setTabbarVisible(false);
+  document.getElementById("screens").innerHTML =
+    '<div class="screen active"><div class="empty-state"><span class="glyph">🐾</span>Loading the training library…</div></div>';
   try{
     await loadKnowledgeBase();
   }catch(e){
@@ -448,17 +462,13 @@ function setTopbar(title, sub, actionsHTML){
 
 function suggestedLesson(dog){
   const IDX = sk.IDX, KB = sk.KB;
-  // Prefer a Foundation/Comms lesson the dog hasn't completed yet; fall back to least-recently-practised
+  // Prefer a Foundation/Comms lesson the dog hasn't completed yet; fall back to least-recently-practised.
+  // Note: lesson.age_stage isn't a real exclusion filter in this dataset — 506/530 lessons are
+  // "All life stages" and the remaining 24 just say "Puppy to adult, adapted to individual" (a
+  // note to adapt technique, not a stage to match against), so there's nothing meaningful to
+  // filter on here. All lessons are eligible for all dogs regardless of ageStage.
   const progress = sk.DB.lessonProgress[dog.id] || {};
-  const candidates = KB.collections.lessons.filter(l=>{
-    if(l.age_stage && l.age_stage!=="All life stages" ){
-      // loose match: allow if dog's stage appears in the age_stage text
-      if(!l.age_stage.toLowerCase().includes(dog.ageStage.toLowerCase())) {
-        // still allow beginner foundation lessons through regardless
-      }
-    }
-    return true;
-  });
+  const candidates = KB.collections.lessons;
   let notStarted = candidates.filter(l=>!progress[l.lesson_id]);
   let pool = notStarted.length ? notStarted : candidates;
   // prioritise Beginner + Foundation/Communication for brand-new dogs
@@ -502,7 +512,7 @@ function renderHome(container){
   const dog = sk.getCurrentDog();
   if(!dog){ sk.goScreen("onboarding"); return; }
   setTopbar("Sidekick", "Hey "+dog.name+" 👋",
-    `<button class="icon-btn" id="switchDogBtn">${dog.emoji}</button>`);
+    `<button class="icon-btn" id="switchDogBtn" aria-label="Switch dog">${dog.emoji}</button>`);
 
   const lesson = suggestedLesson(dog);
   const counts = skillSummary(dog.id);
@@ -695,15 +705,17 @@ function sourcesLine(idsStr){
 function openLessonDetail(lessonId){
   const l = sk.IDX.lessonsById.get(lessonId);
   if(!l) return;
+  sk.setTabbarVisible(true); // detail views are read-only — safe to tab away anytime
   const dog = sk.getCurrentDog();
   const progress = dog ? sk.dogLessonProgress(dog.id, lessonId) : null;
   const steps = sk.splitPipe(l.steps);
   const mistakes = sk.splitPipe(l.common_mistakes);
   const related = sk.splitPipe(l.related_lessons);
+  const prerequisites = sk.splitPipe(l.prerequisites);
   const regression = sk.splitPipe(l.regression);
   const progression = sk.splitPipe(l.progression);
 
-  sk.setTopbar(l.title, l.category, `<button class="icon-btn" id="backBtn">←</button>`);
+  sk.setTopbar(l.title, l.category, `<button class="icon-btn" id="backBtn" aria-label="Back">←</button>`);
 
   const container = document.getElementById("screens");
   container.innerHTML = `<div class="screen active" id="detailScreen">
@@ -727,6 +739,19 @@ function openLessonDetail(lessonId){
         Trained ${progress.timesCompleted}× · last ${sk.daysAgo(progress.lastPracticed)===0?"today":sk.daysAgo(progress.lastPracticed)+"d ago"} · avg success ${Math.round(progress.avgSuccess*100)}%
       </div>
     </div>` : ""}
+
+    ${prerequisites.length ? `
+    <div class="section-label">Before this lesson</div>
+    <div class="row-list" style="margin-bottom:14px;">${prerequisites.map(pid=>{
+      const pl = sk.IDX.lessonsById.get(pid);
+      if(!pl) return "";
+      const done = dog && sk.dogLessonProgress(dog.id, pid);
+      return `<button class="row" data-id="${pid}">
+        <div class="row-tab" style="background:var(${sk.getCategoryVar(pl.category)})"></div>
+        <div class="row-body"><div class="row-title">${sk.esc(pl.title)}</div><div class="row-meta">${sk.esc(pl.category)}</div></div>
+        ${done ? '<span class="badge" style="background:var(--forest);color:#fff;">✓ done</span>' : '<span class="badge badge-outline">not started</span>'}
+      </button>`;
+    }).join("")}</div>` : ""}
 
     <div class="section-label">Setup</div>
     <p style="font-size:14.5px;">${sk.esc(l.setup)}</p>
@@ -762,6 +787,7 @@ function openLessonDetail(lessonId){
   document.getElementById("backBtn").addEventListener("click", ()=>sk.goScreen(sk.currentScreen));
   document.getElementById("startBtn").addEventListener("click", ()=>sk.startSession(lessonId));
   container.querySelectorAll(".link-pill").forEach(p=>p.addEventListener("click", ()=>openLessonDetail(p.dataset.id)));
+  container.querySelectorAll("#detailScreen .row[data-id]").forEach(r=>r.addEventListener("click", ()=>openLessonDetail(r.dataset.id)));
 }
 
 /* ---------- Session (training) flow ---------- */
@@ -769,6 +795,7 @@ function startSession(lessonId){
   const l = sk.IDX.lessonsById.get(lessonId);
   const dog = sk.getCurrentDog();
   if(!dog){ sk.showToast("Add a dog first."); return; }
+  sk.setTabbarVisible(false); // in-progress reps — don't let a stray tab tap discard them
   sk.setActiveSession({ lessonId, reps:[], startedAt:Date.now() });
   renderSessionScreen();
 }
@@ -776,7 +803,7 @@ function startSession(lessonId){
 function renderSessionScreen(){
   const session = sk.activeSession;
   const l = sk.IDX.lessonsById.get(session.lessonId);
-  sk.setTopbar(l.title, "Training session", `<button class="icon-btn" id="endBtn">✕</button>`);
+  sk.setTopbar(l.title, "Training session", `<button class="icon-btn" id="endBtn" aria-label="End session">✕</button>`);
   const container = document.getElementById("screens");
   container.innerHTML = `<div class="screen active">
     <div class="card" style="text-align:center;">
@@ -980,7 +1007,8 @@ function renderBehaviours(container){
 function openBehaviourDetail(id){
   const b = sk.IDX.behavioursById.get(id);
   if(!b) return;
-  sk.setTopbar(b.name, b.category, `<button class="icon-btn" id="backBtn">←</button>`);
+  sk.setTabbarVisible(true); // read-only detail view
+  sk.setTopbar(b.name, b.category, `<button class="icon-btn" id="backBtn" aria-label="Back">←</button>`);
   const cats = extractRouteCategories(b.training_route||"");
   const routeLessons = [];
   cats.forEach(cat=>{
@@ -1291,6 +1319,7 @@ function startProgramme(programmeId){
   const dog = sk.getCurrentDog();
   const lessons = programmeLessonList(p, dog);
   if(!lessons.length){ sk.showToast("Nothing to start yet."); return; }
+  sk.setTabbarVisible(false); // in-progress reps — don't let a stray tab tap discard them
   sk.setActiveProgramme({ programmeId, lessons, index:0, blockResults:[] });
   renderProgrammeBlock();
 }
@@ -1300,7 +1329,7 @@ function renderProgrammeBlock(){
   const p = sk.IDX.programmesById.get(prog.programmeId);
   const l = prog.lessons[prog.index];
   const reps = [];
-  sk.setTopbar(p.name, "Block "+(prog.index+1)+" of "+prog.lessons.length, `<button class="icon-btn" id="endProgBtn">✕</button>`);
+  sk.setTopbar(p.name, "Block "+(prog.index+1)+" of "+prog.lessons.length, `<button class="icon-btn" id="endProgBtn" aria-label="End programme">✕</button>`);
   const container = document.getElementById("screens");
   container.innerHTML = `<div class="screen active">
     <div class="progress-track" style="margin-bottom:16px;"><div class="progress-fill" style="width:${(prog.index/prog.lessons.length*100).toFixed(0)}%"></div></div>
@@ -1416,14 +1445,20 @@ function openMythsReference(){
   const myths = sk.KB.collections.myths;
   sk.openModal(`
     <h3>Myths & realities</h3>
-    ${myths.map(m=>`<div class="card"><strong>${sk.esc(m.myth)}</strong><p style="margin-top:6px; margin-bottom:0; font-size:13.5px; color:var(--ink-soft);">${sk.esc(m.reality)}</p></div>`).join("")}
+    ${myths.map(m=>{
+      const srcs = sk.sourcesLine(m.source_ids);
+      return `<div class="card"><strong>${sk.esc(m.myth)}</strong><p style="margin-top:6px; margin-bottom:0; font-size:13.5px; color:var(--ink-soft);">${sk.esc(m.reality)}</p>${srcs?`<p style="margin:8px 0 0; font-size:11px; color:var(--ink-soft);">Sources: ${sk.esc(srcs)}</p>`:""}</div>`;
+    }).join("")}
   `);
 }
 function openGuidanceReference(){
   const items = sk.KB.collections.owner_guidance;
   sk.openModal(`
     <h3>Owner guidance</h3>
-    ${items.map(g=>`<div class="card"><strong>${sk.esc(g.topic)}</strong><p style="margin-top:6px; margin-bottom:0; font-size:13.5px; color:var(--ink-soft);">${sk.esc(g.guidance)}</p></div>`).join("")}
+    ${items.map(g=>{
+      const srcs = sk.sourcesLine(g.source_ids);
+      return `<div class="card"><strong>${sk.esc(g.topic)}</strong><p style="margin-top:6px; margin-bottom:0; font-size:13.5px; color:var(--ink-soft);">${sk.esc(g.guidance)}</p>${srcs?`<p style="margin:8px 0 0; font-size:11px; color:var(--ink-soft);">Sources: ${sk.esc(srcs)}</p>`:""}</div>`;
+    }).join("")}
   `);
 }
 function openEvidenceReference(){
