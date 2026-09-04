@@ -52,6 +52,15 @@ function loadDB(){
   }catch(e){ console.error("Sidekick: failed to parse local data, starting fresh.", e); }
   return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{} };
 }
+function applyTheme(theme){
+  document.body.dataset.theme = theme; // "light" | "dark" | "auto" — CSS handles all three
+}
+function setTheme(theme){
+  if(!DB.settings) DB.settings = {};
+  DB.settings.theme = theme;
+  saveDB();
+  applyTheme(theme);
+}
 function saveDB(){
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
@@ -169,6 +178,20 @@ document.addEventListener("click", (e)=>{
 /* ---------------- Router ---------------- */
 const SCREEN_RENDERERS = {}; // filled in by other sections: name -> function(container)
 const TAB_SCREENS = ["home","lessons","behaviours","skills","more"];
+// Baseline topbar content per screen, applied before the renderer runs.
+// This exists so a screen can never show another screen's leftover title —
+// a real bug: onboarding never called setTopbar, so reaching it via Reset
+// or "remove last dog" left whatever title the previous screen had set.
+// Renderers that need dynamic content (e.g. Home's "Hey Bramble!") still
+// override this immediately after.
+const SCREEN_TOPBAR_DEFAULTS = {
+  onboarding: ["Sidekick", "Let's get set up"],
+  home: ["Sidekick", "Reward-based training"],
+  lessons: ["Lessons", ""],
+  behaviours: ["Behaviour guide", "Find management & training routes"],
+  skills: ["Skills", ""],
+  more: ["More", "Programmes, safety & data"],
+};
 
 function setTabbarVisible(visible){
   document.getElementById("tabbar").style.display = visible ? "flex" : "none";
@@ -178,12 +201,9 @@ function goScreen(name, opts){
   opts = opts || {};
   currentScreen = name;
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.screen===name));
-  // Onboarding isn't a tab destination — keep the tab bar hidden so a
-  // brand-new user can't tap away mid-setup. Any other named screen (all
-  // real tabs) restores it. Session/programme flows bypass goScreen
-  // entirely while they're running (see startSession/startProgramme) so
-  // in-progress reps can't be abandoned via a stray tab tap.
   setTabbarVisible(TAB_SCREENS.includes(name));
+  const fallback = SCREEN_TOPBAR_DEFAULTS[name];
+  if(fallback) window.__sk.setTopbar(fallback[0], fallback[1], "");
   render(opts);
   window.scrollTo(0,0);
 }
@@ -202,6 +222,10 @@ document.addEventListener("DOMContentLoaded", ()=>{
   document.querySelectorAll(".tab").forEach(tab=>{
     tab.addEventListener("click", ()=>goScreen(tab.dataset.screen));
   });
+  document.getElementById("topbarLogo").addEventListener("click", ()=>{
+    if(window.__sk.currentScreen === "onboarding") return; // avoid wiping a half-filled form
+    goScreen("home");
+  });
 });
 
 /* expose small internal API for other IIFE-scoped sections appended below */
@@ -217,7 +241,7 @@ window.__sk = {
   AVATAR_COLORS, DOG_EMOJI, AGE_STAGES,
   splitPipe, splitSemi, getCategoryVar, getCategoryIcon,
   getCurrentDog, ensureCurrentDog, dogSkillState, setDogSkillState, dogLessonProgress,
-  uid, esc, fmtDate, daysAgo, showToast, openModal, closeModal,
+  uid, esc, fmtDate, daysAgo, showToast, openModal, closeModal, setTheme,
   goScreen, render, SCREEN_RENDERERS, saveDB, loadKnowledgeBase, loadDB, setTabbarVisible
 };
 
@@ -225,6 +249,7 @@ window.__sk = {
 async function boot(){
   DB = loadDB();
   ensureCurrentDog();
+  applyTheme((DB.settings && DB.settings.theme) || "auto");
   setTabbarVisible(false);
   document.getElementById("screens").innerHTML =
     '<div class="screen active"><div class="empty-state"><span class="glyph">🐾</span>Loading the training library…</div></div>';
@@ -263,6 +288,7 @@ function dogAvatarHTML(dog, size){
 }
 
 function renderOnboarding(container){
+  sk.setTopbar("Sidekick", "Let's get set up", "");
   container.innerHTML = `
     <div style="padding-top:8px;">
       <div style="text-align:center; margin-bottom:24px;">
@@ -1178,6 +1204,7 @@ function storageEstimateText(){
 function renderMore(container){
   sk.setTopbar("More", "Programmes, safety & data", "");
   const dog = sk.getCurrentDog();
+  const currentTheme = (sk.DB.settings && sk.DB.settings.theme) || "auto";
   container.innerHTML = `
     <div class="section-label">Dogs</div>
     <div class="row-list">
@@ -1209,6 +1236,16 @@ function renderMore(container){
       <button class="row" id="rulesRow"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">How progression works</div><div class="row-meta">The rules behind session recommendations</div></div><span class="row-chev">›</span></button>
     </div>
 
+    <div class="section-label">Appearance</div>
+    <div class="card">
+      <div class="chip-group" id="themeChips" style="margin-bottom:0;">
+        ${[["light","☀️ Light"],["auto","🌓 Auto"],["dark","🌙 Dark"]].map(([val,label])=>
+          `<button type="button" class="chip${currentTheme===val?' selected':''}" data-val="${val}">${label}</button>`
+        ).join("")}
+      </div>
+      <p style="font-size:11.5px; color:var(--ink-soft); margin:8px 0 0;">Auto follows your device's setting.</p>
+    </div>
+
     <div class="section-label">Data</div>
     <div class="card">
       <p style="font-size:13px; color:var(--ink-soft); margin-bottom:10px;">${storageEstimateText()} · stored only on this device.</p>
@@ -1217,7 +1254,8 @@ function renderMore(container){
       <input type="file" id="importFile" accept="application/json" style="display:none;">
       <button class="btn btn-danger btn-block" id="resetBtn" style="margin-top:8px;">Reset all data</button>
     </div>
-    <p style="text-align:center; font-size:11.5px; color:var(--ink-soft); margin-top:6px;">Sidekick · original content, Woofz used only as UX inspiration</p>
+
+    <button class="row" id="aboutRow" style="margin-top:10px;"><div class="row-tab" style="background:var(--ink-soft)"></div><div class="row-body"><div class="row-title">About Sidekick</div><div class="row-meta">Version, credits & content notes</div></div><span class="row-chev">›</span></button>
   `;
 
   container.querySelectorAll("[data-dog]").forEach(r=>r.addEventListener("click", ()=>{
@@ -1231,6 +1269,13 @@ function renderMore(container){
   container.querySelector("#guidanceRow").addEventListener("click", openGuidanceReference);
   container.querySelector("#evidenceRow").addEventListener("click", openEvidenceReference);
   container.querySelector("#rulesRow").addEventListener("click", openRulesReference);
+  container.querySelector("#themeChips").addEventListener("click", e=>{
+    const b = e.target.closest(".chip"); if(!b) return;
+    container.querySelectorAll("#themeChips .chip").forEach(c=>c.classList.remove("selected"));
+    b.classList.add("selected");
+    sk.setTheme(b.dataset.val);
+  });
+  container.querySelector("#aboutRow").addEventListener("click", openAboutScreen);
   container.querySelector("#exportBtn").addEventListener("click", exportBackup);
   container.querySelector("#importBtn").addEventListener("click", ()=>container.querySelector("#importFile").click());
   container.querySelector("#importFile").addEventListener("change", importBackup);
@@ -1519,6 +1564,43 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
+const APP_VERSION = "1.1.0";
+
+function openAboutScreen(){
+  const kb = sk.KB;
+  const reviewStatus = kb.collections.lessons[0] && kb.collections.lessons[0].review_status;
+  sk.openModal(`
+    <div style="text-align:center; margin-bottom:4px;">
+      <div style="font-size:36px;">🐾</div>
+      <h3 style="margin-bottom:2px;">Sidekick</h3>
+      <p style="color:var(--ink-soft); font-size:13px; margin-bottom:0;">Version ${APP_VERSION}</p>
+    </div>
+
+    <div class="card">
+      <p style="font-size:13.5px; margin-bottom:0;">${sk.esc(kb.purpose || "A reward-based, welfare-centred dog training companion.")}</p>
+    </div>
+
+    <div class="stat-grid" style="grid-template-columns:repeat(3,1fr);">
+      <div class="stat-box"><div class="num" style="font-size:18px;">${kb.collections.lessons.length}</div><div class="lbl">Lessons</div></div>
+      <div class="stat-box"><div class="num" style="font-size:18px;">${kb.collections.skills.length}</div><div class="lbl">Skills</div></div>
+      <div class="stat-box"><div class="num" style="font-size:18px;">${kb.collections.behaviours.length}</div><div class="lbl">Behaviours</div></div>
+    </div>
+
+    ${reviewStatus ? `<div class="banner banner-amber"><span class="glyph">📋</span><div><strong>Content status:</strong> ${sk.esc(reviewStatus)}</div></div>` : ""}
+
+    ${kb.copyright_note ? `<div class="section-label">A note on content</div>
+    <p style="font-size:13px; color:var(--ink-soft);">${sk.esc(kb.copyright_note)}</p>` : ""}
+
+    ${kb.progression_note ? `<div class="section-label">A note on progression</div>
+    <p style="font-size:13px; color:var(--ink-soft);">${sk.esc(kb.progression_note)}</p>` : ""}
+
+    <div class="section-label">Data & privacy</div>
+    <p style="font-size:13px; color:var(--ink-soft);">Everything you enter — dog profiles, sessions, skill progress — stays on this device in your browser's local storage. Nothing is sent anywhere. Back up or move devices anytime from Data → Export backup.</p>
+
+    <p style="text-align:center; font-size:11px; color:var(--ink-soft); margin-top:18px;">Built for training with care, not for training data.</p>
+  `);
+}
+
 function confirmReset(){
   sk.openModal(`
     <h3>Reset all data?</h3>

@@ -66,6 +66,34 @@
   --font-body: 'Inter', -apple-system, sans-serif;
 }
 
+/* ---------- Dark theme ----------
+   Only the structural tokens shift (canvas/ink/line/forest-for-buttons).
+   Badge/banner pastel backgrounds (ochre-soft, red-soft, amber-soft,
+   green-soft) are deliberately left as light chips even in dark mode —
+   common pattern for alert/status colors, and they already carry their
+   own dark text so contrast holds regardless of the page background.
+   Category tab colors are mid-saturation and read fine unchanged too. */
+body[data-theme="dark"]{
+  --canvas:       #1B211C;
+  --canvas-raised:#232B25;
+  --ink:          #ECE8DC;
+  --ink-soft:     #9FAA9C;
+  --line:         #384034;
+  --forest:       #4C8058;
+  --forest-dark:  #3A6644;
+}
+@media (prefers-color-scheme: dark){
+  body[data-theme="auto"]{
+    --canvas:       #1B211C;
+    --canvas-raised:#232B25;
+    --ink:          #ECE8DC;
+    --ink-soft:     #9FAA9C;
+    --line:         #384034;
+    --forest:       #4C8058;
+    --forest-dark:  #3A6644;
+  }
+}
+
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
 body{
@@ -77,6 +105,7 @@ body{
   -webkit-font-smoothing:antialiased;
   padding-bottom:76px; /* space for tab bar */
   min-height:100vh;
+  transition:background-color 0.2s ease, color 0.2s ease;
 }
 h1,h2,h3,h4{
   font-family:var(--font-display);
@@ -109,6 +138,11 @@ button{font-family:inherit;}
 }
 .topbar h1{font-size:20px; margin:0;}
 .topbar .sub{font-size:13px; color:var(--ink-soft); margin-top:1px;}
+.topbar-logo{
+  flex:none; width:30px; height:30px; border-radius:50%; border:none; background:none;
+  padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center;
+}
+.topbar-logo:active{opacity:0.7;}
 .topbar-actions{display:flex; gap:8px; align-items:center;}
 .icon-btn{
   width:36px;height:36px; border-radius:50%; border:1px solid var(--line);
@@ -278,12 +312,22 @@ textarea{resize:vertical; min-height:70px;}
 }
 </style>
 </head>
-<body>
+<body data-theme="auto">
 <div id="app">
 
   <!-- ===================== TOP BAR ===================== -->
   <div class="topbar" id="topbar">
-    <div>
+    <button class="topbar-logo" id="topbarLogo" aria-label="Sidekick home" title="Home">
+      <svg viewBox="0 0 100 100" width="30" height="30" aria-hidden="true">
+        <circle cx="50" cy="50" r="50" fill="var(--forest)"/>
+        <circle cx="50" cy="60" r="19" fill="var(--canvas)"/>
+        <circle cx="27" cy="38" r="9.5" fill="var(--canvas)"/>
+        <circle cx="41" cy="24" r="10" fill="var(--canvas)"/>
+        <circle cx="59" cy="24" r="10" fill="var(--canvas)"/>
+        <circle cx="73" cy="38" r="9.5" fill="var(--canvas)"/>
+      </svg>
+    </button>
+    <div style="flex:1; min-width:0;">
       <h1 id="topbarTitle">Sidekick</h1>
       <div class="sub" id="topbarSub">Reward-based training</div>
     </div>
