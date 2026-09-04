@@ -23,12 +23,12 @@
   --line:        #D9D2BF;   /* hairline rule on paper */
   --forest:      #2F5233;   /* primary — deep forest green */
   --forest-dark: #1F3A24;
-  --ochre:       #C08A2B;   /* secondary accent — mustard/ochre, not terracotta */
+  --ochre:       #986E22;   /* secondary accent — mustard/ochre, not terracotta (darkened from C08A2B for WCAG AA with white text) */
   --ochre-soft:  #EFDFB8;
   --sky:         #3E6E82;   /* tertiary accent — muted teal-blue, sparse use */
   --red:         #B23A2E;   /* functional only: safety gates / errors */
   --red-soft:    #F3DED9;
-  --amber:       #C08A2B;
+  --amber:       #986E22;
   --amber-soft:  #F5E7C8;
   --green-ok:    #2F5233;
   --green-soft:  #DCE6D5;
@@ -37,7 +37,7 @@
   --cat-foundation:#2F5233;
   --cat-com:      #3E6E82;
   --cat-basic:    #6B4E9A;
-  --cat-life:     #C08A2B;
+  --cat-life:     #986E22;
   --cat-calm:     #4E7A8C;
   --cat-walk:     #8A6D3A;
   --cat-recall:   #2F7A5C;
@@ -45,13 +45,13 @@
   --cat-care:     #4E7A5A;
   --cat-home:     #7A5C3E;
   --cat-alone:    #5A6E8C;
-  --cat-bark:     #B2622E;
+  --cat-bark:     #B0612D;
   --cat-chew:     #8C5A3E;
   --cat-guard:    #B23A2E;
   --cat-chase:    #7A3E5A;
   --cat-react:    #A83E3E;
-  --cat-enrich:   #3E8C6E;
-  --cat-tricks:   #C08A2B;
+  --cat-enrich:   #3A8367;
+  --cat-tricks:   #986E22;
   --cat-owner:    #4B5A4A;
   --cat-assess:   #3E6E82;
   --cat-safety:   #B23A2E;
@@ -310,6 +310,38 @@ textarea{resize:vertical; min-height:70px;}
   display:inline-block; padding:6px 12px; border:1px solid var(--line); border-radius:20px;
   font-size:12.5px; margin:0 6px 6px 0; cursor:pointer; color:var(--forest-dark); background:var(--canvas-raised);
 }
+
+/* ---------- Printable training log ---------- */
+#printLogOverlay{
+  position:fixed; inset:0; z-index:500; background:var(--canvas);
+  overflow-y:auto;
+}
+.print-toolbar{
+  position:sticky; top:0; z-index:2; display:flex; justify-content:space-between; gap:10px;
+  padding:12px 16px; background:var(--canvas-raised); border-bottom:1px solid var(--line);
+}
+.print-page{
+  max-width:640px; margin:0 auto; padding:24px 20px 60px; color:var(--ink);
+}
+.print-page h1{font-size:22px; margin-bottom:2px;}
+.print-page .print-sub{color:var(--ink-soft); font-size:13px; margin-bottom:20px;}
+.print-page h2{font-size:16px; margin-top:26px; border-bottom:1px solid var(--line); padding-bottom:6px;}
+.print-page h3{font-size:13px; color:var(--ink-soft); margin-top:16px; margin-bottom:4px;}
+.print-table{width:100%; border-collapse:collapse; margin-bottom:8px; font-size:13px;}
+.print-table td, .print-table th{padding:6px 4px; border-bottom:1px solid var(--line); text-align:left;}
+.print-table th{font-size:11px; text-transform:uppercase; letter-spacing:0.03em; color:var(--ink-soft);}
+.print-table-wide{font-size:12px;}
+.print-footer{text-align:center; color:var(--ink-soft); font-size:11px; margin-top:30px;}
+
+@media print{
+  #app, .toast, .modal-overlay{ display:none !important; }
+  .no-print{ display:none !important; }
+  #printLogOverlay{ position:static; overflow:visible; background:#fff; }
+  .print-page{ color:#000; max-width:none; }
+  .print-page h2{ break-after:avoid; }
+  .print-table tr{ break-inside:avoid; }
+  body{ padding-bottom:0; }
+}
 </style>
 </head>
 <body data-theme="auto">
@@ -344,6 +376,7 @@ textarea{resize:vertical; min-height:70px;}
     <button class="tab" data-screen="behaviours"><span class="tab-icon">🧭</span>Behaviour</button>
     <button class="tab" data-screen="skills"><span class="tab-icon">🎯</span>Skills</button>
     <button class="tab" data-screen="more"><span class="tab-icon">☰</span>More</button>
+    <button class="tab" data-screen="progress"><span class="tab-icon">📈</span>Progress</button>
     <button class="tab" data-screen="about"><span class="tab-icon">ℹ️</span>About</button>
   </div>
 

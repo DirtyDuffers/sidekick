@@ -48,9 +48,13 @@ let activeProgramme = null; // {programmeId, lessons:[], index, blockResults:[]}
 function loadDB(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw) return JSON.parse(raw);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      if(!parsed.favourites) parsed.favourites = []; // added after initial release — default for existing saves
+      return parsed;
+    }
   }catch(e){ console.error("Sidekick: failed to parse local data, starting fresh.", e); }
-  return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{} };
+  return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{}, favourites:[] };
 }
 function applyTheme(theme){
   document.body.dataset.theme = theme; // "light" | "dark" | "auto" — CSS handles all three
@@ -142,6 +146,17 @@ function setDogSkillState(dogId, skillId, state){
 function dogLessonProgress(dogId, lessonId){
   return (DB.lessonProgress[dogId] && DB.lessonProgress[dogId][lessonId]) || null;
 }
+function isFavourite(lessonId){
+  return DB.favourites.includes(lessonId);
+}
+function toggleFavourite(lessonId){
+  if(!DB.favourites) DB.favourites = [];
+  const idx = DB.favourites.indexOf(lessonId);
+  if(idx===-1) DB.favourites.push(lessonId);
+  else DB.favourites.splice(idx,1);
+  saveDB();
+  return idx===-1; // true if it's now favourited
+}
 
 /* ---------------- Utility ---------------- */
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
@@ -177,7 +192,7 @@ document.addEventListener("click", (e)=>{
 
 /* ---------------- Router ---------------- */
 const SCREEN_RENDERERS = {}; // filled in by other sections: name -> function(container)
-const TAB_SCREENS = ["home","lessons","behaviours","skills","more","about"];
+const TAB_SCREENS = ["home","lessons","behaviours","skills","more","about","progress"];
 // Baseline topbar content per screen, applied before the renderer runs.
 // This exists so a screen can never show another screen's leftover title —
 // a real bug: onboarding never called setTopbar, so reaching it via Reset
@@ -192,6 +207,7 @@ const SCREEN_TOPBAR_DEFAULTS = {
   skills: ["Skills", ""],
   more: ["More", "Programmes, safety & data"],
   about: ["About", "Sidekick"],
+  progress: ["Progress", "Your training history"],
 };
 
 function setTabbarVisible(visible){
@@ -242,6 +258,7 @@ window.__sk = {
   AVATAR_COLORS, DOG_EMOJI, AGE_STAGES,
   splitPipe, splitSemi, getCategoryVar, getCategoryIcon,
   getCurrentDog, ensureCurrentDog, dogSkillState, setDogSkillState, dogLessonProgress,
+  isFavourite, toggleFavourite,
   uid, esc, fmtDate, daysAgo, showToast, openModal, closeModal, setTheme,
   goScreen, render, SCREEN_RENDERERS, saveDB, loadKnowledgeBase, loadDB, setTabbarVisible
 };
@@ -608,6 +625,8 @@ function renderHome(container){
 
 sk.SCREEN_RENDERERS.home = renderHome;
 window.__sk.setTopbar = setTopbar;
+window.__sk.trainingStreak = trainingStreak;
+window.__sk.recentSessions = recentSessions;
 })();
 
 /* ============================================================
@@ -627,6 +646,7 @@ function renderLessons(container){
     </div>
     <div class="chip-group" id="catChips" style="flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; margin-bottom:10px;">
       <button class="chip${f.category==='All'?' selected':''}" data-val="All">All</button>
+      <button class="chip${f.category==='★ Favourites'?' selected':''}" data-val="★ Favourites">★ Favourites</button>
       ${sk.IDX.categories.map(c=>`<button class="chip${f.category===c?' selected':''}" data-val="${sk.esc(c)}">${sk.getCategoryIcon(c)} ${sk.esc(c)}</button>`).join("")}
     </div>
     <div class="chip-group" id="diffChips">
@@ -637,11 +657,17 @@ function renderLessons(container){
 
   function applyFilter(){
     let list = sk.KB.collections.lessons;
-    if(f.category!=="All") list = list.filter(l=>l.category===f.category);
+    if(f.category==="★ Favourites") list = list.filter(l=>sk.isFavourite(l.lesson_id));
+    else if(f.category!=="All") list = list.filter(l=>l.category===f.category);
     if(f.difficulty!=="All") list = list.filter(l=>l.difficulty===f.difficulty);
     if(f.query.trim()){
       const q = f.query.trim().toLowerCase();
-      list = list.filter(l=> l.title.toLowerCase().includes(q) || (l.objective||"").toLowerCase().includes(q));
+      list = list.filter(l=>
+        l.title.toLowerCase().includes(q) ||
+        (l.objective||"").toLowerCase().includes(q) ||
+        (l.success_criteria||"").toLowerCase().includes(q) ||
+        (l.common_mistakes||"").toLowerCase().includes(q)
+      );
     }
     return list;
   }
@@ -650,7 +676,10 @@ function renderLessons(container){
     const list = applyFilter();
     const resultsEl = container.querySelector("#lessonResults");
     if(!list.length){
-      resultsEl.innerHTML = `<div class="empty-state"><span class="glyph">🔎</span>No lessons match. Try another search or category.</div>`;
+      const msg = f.category==="★ Favourites"
+        ? "No favourites yet — tap the star on any lesson to pin it here."
+        : "No lessons match. Try another search or category.";
+      resultsEl.innerHTML = `<div class="empty-state"><span class="glyph">${f.category==="★ Favourites"?"★":"🔎"}</span>${msg}</div>`;
       return;
     }
     const dog = sk.getCurrentDog();
@@ -658,10 +687,11 @@ function renderLessons(container){
     resultsEl.innerHTML = `<div class="row-list">${list.map(l=>{
       const p = progress[l.lesson_id];
       const done = p && p.timesCompleted;
+      const fav = sk.isFavourite(l.lesson_id);
       return `<button class="row" data-id="${l.lesson_id}">
         <div class="row-tab" style="background:var(${sk.getCategoryVar(l.category)})"></div>
         <div class="row-body">
-          <div class="row-title">${sk.esc(l.title)}</div>
+          <div class="row-title">${fav?'★ ':''}${sk.esc(l.title)}</div>
           <div class="row-meta">
             <span class="badge badge-outline">${sk.esc(l.difficulty)}</span>
             <span>${sk.esc(l.session_length_min)} min</span>
@@ -715,7 +745,7 @@ function safetyGateBanners(idsStr){
     const g = sk.IDX.safetyGatesById.get(id);
     if(!g) return "";
     const cls = severityClass(g.severity);
-    return `<div class="banner ${cls}"><span class="glyph">⚠️</span><div><strong>${sk.esc(g.name)}</strong><br>${sk.esc(g.action)}</div></div>`;
+    return `<div class="banner ${cls}"><span class="glyph">⚠️</span><div><strong>${sk.esc(g.name)}</strong><br><span style="font-size:12.5px;">${sk.esc(g.trigger)}</span><br>${sk.esc(g.action)}</div></div>`;
   }).join("");
 }
 
@@ -727,6 +757,76 @@ function sourcesLine(idsStr){
     return s ? (s.organisation || s.name || s.source_name || id) : id;
   });
   return names.join(" · ");
+}
+
+// Renders each source as a tappable pill instead of plain text — lets
+// someone actually inspect a citation (key finding, year, limitations,
+// link to the original) rather than just seeing an organisation name.
+function sourcesPillsHTML(idsStr){
+  const ids = sk.splitSemi(idsStr).length ? sk.splitSemi(idsStr) : sk.splitPipe(idsStr);
+  if(!ids.length) return "";
+  return `<div style="margin-top:8px;">${ids.map(id=>{
+    const s = sk.IDX.sourcesById.get(id);
+    const label = s ? (s.organisation || s.name || s.source_name || id) : id;
+    return `<span class="link-pill" data-source-id="${sk.esc(id)}" style="font-size:11px; padding:4px 10px;">${sk.esc(label)}</span>`;
+  }).join("")}</div>`;
+}
+
+function openSourceDetail(sourceId){
+  const s = sk.IDX.sourcesById.get(sourceId);
+  if(!s) return;
+  sk.openModal(`
+    <h3 style="margin-bottom:2px;">${sk.esc(s.organisation || "Source")}</h3>
+    <p style="font-size:13px; color:var(--ink-soft); margin-bottom:12px;">${sk.esc(s.title || "")}${s.year ? " · "+sk.esc(s.year) : ""}</p>
+    ${s.evidence_type ? `<span class="badge badge-outline">${sk.esc(s.evidence_type)}</span>` : ""}
+    ${s.key_finding ? `<div class="section-label">Key finding</div><p style="font-size:13.5px;">${sk.esc(s.key_finding)}</p>` : ""}
+    ${s.limitations ? `<div class="section-label">Limitations</div><p style="font-size:13px; color:var(--ink-soft);">${sk.esc(s.limitations)}</p>` : ""}
+    ${s.url ? `<a href="${sk.esc(s.url)}" target="_blank" rel="noopener" class="btn btn-secondary btn-block" style="margin-top:14px;">View original source ↗</a>` : ""}
+  `);
+  // Delegated so it works regardless of how the modal content was built.
+  document.getElementById("modalSheet").querySelectorAll("a[target=_blank]").forEach(a=>{
+    a.addEventListener("click", e=>e.stopPropagation());
+  });
+}
+
+// Any screen that renders sourcesPillsHTML() needs this wired after render —
+// delegate from the modal sheet / screen container since pills are added
+// dynamically in many different places.
+document.addEventListener("click", (e)=>{
+  const pill = e.target.closest(".link-pill[data-source-id]");
+  if(pill) openSourceDetail(pill.dataset.sourceId);
+});
+
+// ---------- Optional lesson media (images/video) ----------
+// Schema (all fields optional, everything no-ops if absent — safe to add
+// later without touching this code):
+//   lesson.media = {
+//     image: "url" or hero_image: "url",   // either key name works
+//     video: "url" or hero_video: "url",   // YouTube link or direct .mp4 — either key name works
+//     steps: [ {image:"url"} | {video:"url"} | null, ... ]  // parallel to lesson.steps
+//   }
+// Recommendation for whoever populates this later: keep media as real files
+// referenced by URL/relative path (e.g. a data/media/ folder alongside
+// knowledge_base.json), not base64-embedded in the JSON — the knowledge
+// base is already 1.5MB and inline images at this lesson count would bloat
+// it dramatically and hurt the service worker's cache performance.
+function youtubeEmbedUrl(url){
+  const m = String(url).match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([\w-]{11})/);
+  return m ? `https://www.youtube.com/embed/${m[1]}` : null;
+}
+function renderMediaBlock(media){
+  if(!media) return "";
+  const video = media.video || media.hero_video;
+  const image = media.image || media.hero_image;
+  if(video){
+    const yt = youtubeEmbedUrl(video);
+    if(yt) return `<div style="border-radius:var(--radius-m); overflow:hidden; margin-bottom:12px; aspect-ratio:16/9;"><iframe src="${sk.esc(yt)}" style="width:100%; height:100%; border:none;" allowfullscreen loading="lazy"></iframe></div>`;
+    return `<video controls preload="none" style="width:100%; border-radius:var(--radius-m); margin-bottom:12px;" src="${sk.esc(video)}"></video>`;
+  }
+  if(image){
+    return `<img src="${sk.esc(image)}" alt="" loading="lazy" style="width:100%; border-radius:var(--radius-m); margin-bottom:12px; display:block;">`;
+  }
+  return "";
 }
 
 function openLessonDetail(lessonId){
@@ -742,7 +842,8 @@ function openLessonDetail(lessonId){
   const regression = sk.splitPipe(l.regression);
   const progression = sk.splitPipe(l.progression);
 
-  sk.setTopbar(l.title, l.category, `<button class="icon-btn" id="backBtn" aria-label="Back">←</button>`);
+  const isFav = sk.isFavourite(lessonId);
+  sk.setTopbar(l.title, l.category, `<button class="icon-btn" id="favBtn" aria-label="${isFav?'Remove from favourites':'Add to favourites'}" style="${isFav?'color:var(--ochre);':''}">${isFav?'★':'☆'}</button><button class="icon-btn" id="backBtn" aria-label="Back">←</button>`);
 
   const container = document.getElementById("screens");
   container.innerHTML = `<div class="screen active" id="detailScreen">
@@ -751,6 +852,8 @@ function openLessonDetail(lessonId){
     <span class="badge badge-outline">${sk.esc(l.evidence_level||"")}</span>
 
     ${safetyGateBanners(l.safety_gate_ids)}
+
+    ${renderMediaBlock(l.media)}
 
     <p style="margin-top:14px; font-size:15px;">${sk.esc(l.objective)}</p>
     <p style="color:var(--ink-soft); font-size:13.5px;"><strong>Why it matters:</strong> ${sk.esc(l.why_it_matters)}</p>
@@ -784,7 +887,7 @@ function openLessonDetail(lessonId){
     <p style="font-size:14.5px;">${sk.esc(l.setup)}</p>
 
     <div class="section-label">Steps</div>
-    <div class="card">${steps.map((s,i)=>`<div class="step-item"><div class="step-num">${i+1}</div><div>${sk.esc(s)}</div></div>`).join("")}</div>
+    <div class="card">${steps.map((s,i)=>`<div class="step-item"><div class="step-num">${i+1}</div><div>${sk.esc(s)}${(l.media&&l.media.steps&&l.media.steps[i])?renderMediaBlock(l.media.steps[i]):""}</div></div>`).join("")}</div>
 
     <div class="section-label">Success criteria</div>
     <p style="font-size:14.5px;">${sk.esc(l.success_criteria)}</p>
@@ -805,13 +908,21 @@ function openLessonDetail(lessonId){
       return rl ? `<span class="link-pill" data-id="${id}">${sk.esc(rl.title)}</span>` : "";
     }).join("")}</div>` : ""}
 
-    ${sourcesLine(l.source_ids) ? `<p style="font-size:11.5px; color:var(--ink-soft); margin-top:18px;">Sources: ${sk.esc(sourcesLine(l.source_ids))}</p>` : ""}
+    ${sourcesLine(l.source_ids) ? `<p style="font-size:11.5px; color:var(--ink-soft); margin-top:18px;">Sources:</p>${sourcesPillsHTML(l.source_ids)}` : ""}
 
     <div style="height:12px;"></div>
     <button class="btn btn-primary btn-block" id="startBtn">Start session</button>
   </div>`;
 
   document.getElementById("backBtn").addEventListener("click", ()=>sk.goScreen(sk.currentScreen));
+  document.getElementById("favBtn").addEventListener("click", ()=>{
+    const nowFav = sk.toggleFavourite(lessonId);
+    const btn = document.getElementById("favBtn");
+    btn.textContent = nowFav ? "★" : "☆";
+    btn.setAttribute("aria-label", nowFav ? "Remove from favourites" : "Add to favourites");
+    btn.style.color = nowFav ? "var(--ochre)" : "";
+    sk.showToast(nowFav ? "Added to favourites" : "Removed from favourites");
+  });
   document.getElementById("startBtn").addEventListener("click", ()=>sk.startSession(lessonId));
   container.querySelectorAll(".link-pill").forEach(p=>p.addEventListener("click", ()=>openLessonDetail(p.dataset.id)));
   container.querySelectorAll("#detailScreen .row[data-id]").forEach(r=>r.addEventListener("click", ()=>openLessonDetail(r.dataset.id)));
@@ -967,6 +1078,8 @@ window.__sk.openLessonDetail = openLessonDetail;
 window.__sk.startSession = startSession;
 window.__sk.severityClass = severityClass;
 window.__sk.sourcesLine = sourcesLine;
+window.__sk.sourcesPillsHTML = sourcesPillsHTML;
+window.__sk.openSourceDetail = openSourceDetail;
 window.__sk.recordLessonAttempt = recordLessonAttempt;
 window.__sk.computeVerdict = computeVerdict;
 })();
@@ -1050,7 +1163,7 @@ function openBehaviourDetail(id){
     ${gateIds.map(gid=>{
       const g = sk.IDX.safetyGatesById.get(gid); if(!g) return "";
       const cls = sk.severityClass(g.severity);
-      return `<div class="banner ${cls}"><span class="glyph">⚠️</span><div><strong>${sk.esc(g.name)}</strong><br>${sk.esc(g.action)}</div></div>`;
+      return `<div class="banner ${cls}"><span class="glyph">⚠️</span><div><strong>${sk.esc(g.name)}</strong><br><span style="font-size:12.5px;">${sk.esc(g.trigger)}</span><br>${sk.esc(g.action)}</div></div>`;
     }).join("")}
 
     <div class="section-label">Possible functions</div>
@@ -1235,6 +1348,7 @@ function renderMore(container){
       <button class="row" id="guidanceRow"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title">Owner guidance</div><div class="row-meta">General principles for training well</div></div><span class="row-chev">›</span></button>
       <button class="row" id="evidenceRow"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">Evidence library</div><div class="row-meta">${sk.KB.collections.evidence_cards.length} topics, what the evidence does and doesn't say</div></div><span class="row-chev">›</span></button>
       <button class="row" id="rulesRow"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">How progression works</div><div class="row-meta">The rules behind session recommendations</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="protocolsRow"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title">Training protocols</div><div class="row-meta">${sk.KB.collections.protocols.length} core frameworks for common training situations</div></div><span class="row-chev">›</span></button>
     </div>
 
     <div class="section-label">Appearance</div>
@@ -1247,12 +1361,20 @@ function renderMore(container){
       <p style="font-size:11.5px; color:var(--ink-soft); margin:8px 0 0;">Auto follows your device's setting.</p>
     </div>
 
+    <div class="section-label">Content check</div>
+    <div class="card">
+      <p style="font-size:13px; color:var(--ink-soft); margin-bottom:10px;">Scans the training library for broken references, missing fields, and media issues — useful after adding new lesson content.</p>
+      <button class="btn btn-secondary btn-block" id="integrityBtn">Run data check</button>
+      <div id="integrityResults" style="margin-top:12px;"></div>
+    </div>
+
     <div class="section-label">Data</div>
     <div class="card">
       <p style="font-size:13px; color:var(--ink-soft); margin-bottom:10px;">${storageEstimateText()} · stored only on this device.</p>
       <button class="btn btn-secondary btn-block" id="exportBtn">Export backup (.json)</button>
       <button class="btn btn-ghost btn-block" id="importBtn" style="margin-top:8px;">Import backup</button>
       <input type="file" id="importFile" accept="application/json" style="display:none;">
+      <button class="btn btn-secondary btn-block" id="printLogBtn" style="margin-top:8px;">Print / export training log</button>
       <button class="btn btn-danger btn-block" id="resetBtn" style="margin-top:8px;">Reset all data</button>
     </div>
   `;
@@ -1268,13 +1390,16 @@ function renderMore(container){
   container.querySelector("#guidanceRow").addEventListener("click", openGuidanceReference);
   container.querySelector("#evidenceRow").addEventListener("click", openEvidenceReference);
   container.querySelector("#rulesRow").addEventListener("click", openRulesReference);
+  container.querySelector("#protocolsRow").addEventListener("click", openProtocolsReference);
   container.querySelector("#themeChips").addEventListener("click", e=>{
     const b = e.target.closest(".chip"); if(!b) return;
     container.querySelectorAll("#themeChips .chip").forEach(c=>c.classList.remove("selected"));
     b.classList.add("selected");
     sk.setTheme(b.dataset.val);
   });
+  container.querySelector("#integrityBtn").addEventListener("click", ()=>runIntegrityCheckUI(container));
   container.querySelector("#exportBtn").addEventListener("click", exportBackup);
+  container.querySelector("#printLogBtn").addEventListener("click", openPrintableLog);
   container.querySelector("#importBtn").addEventListener("click", ()=>container.querySelector("#importFile").click());
   container.querySelector("#importFile").addEventListener("change", importBackup);
   container.querySelector("#resetBtn").addEventListener("click", confirmReset);
@@ -1480,7 +1605,7 @@ function openSafetyReference(){
     <h3>Safety gates</h3>
     <div class="row-list">${gates.map(g=>{
       const cls = sk.severityClass(g.severity);
-      return `<div class="banner ${cls}" style="margin-bottom:8px;"><span class="glyph">⚠️</span><div><strong>${sk.esc(g.name)}</strong><br><span style="font-size:12.5px;">${sk.esc(g.action)}</span></div></div>`;
+      return `<div class="banner ${cls}" style="margin-bottom:8px;"><span class="glyph">⚠️</span><div><strong>${sk.esc(g.name)}</strong><br><span style="font-size:12.5px;">${sk.esc(g.trigger)}</span><br><span style="font-size:12.5px;">${sk.esc(g.action)}</span></div></div>`;
     }).join("")}</div>
   `);
 }
@@ -1490,7 +1615,7 @@ function openMythsReference(){
     <h3>Myths & realities</h3>
     ${myths.map(m=>{
       const srcs = sk.sourcesLine(m.source_ids);
-      return `<div class="card"><strong>${sk.esc(m.myth)}</strong><p style="margin-top:6px; margin-bottom:0; font-size:13.5px; color:var(--ink-soft);">${sk.esc(m.reality)}</p>${srcs?`<p style="margin:8px 0 0; font-size:11px; color:var(--ink-soft);">Sources: ${sk.esc(srcs)}</p>`:""}</div>`;
+      return `<div class="card"><strong>${sk.esc(m.myth)}</strong><p style="margin-top:6px; margin-bottom:0; font-size:13.5px; color:var(--ink-soft);">${sk.esc(m.reality)}</p>${srcs?`<p style="margin:8px 0 0; font-size:11px; color:var(--ink-soft);">Sources:</p>${sk.sourcesPillsHTML(m.source_ids)}`:""}</div>`;
     }).join("")}
   `);
 }
@@ -1500,7 +1625,7 @@ function openGuidanceReference(){
     <h3>Owner guidance</h3>
     ${items.map(g=>{
       const srcs = sk.sourcesLine(g.source_ids);
-      return `<div class="card"><strong>${sk.esc(g.topic)}</strong><p style="margin-top:6px; margin-bottom:0; font-size:13.5px; color:var(--ink-soft);">${sk.esc(g.guidance)}</p>${srcs?`<p style="margin:8px 0 0; font-size:11px; color:var(--ink-soft);">Sources: ${sk.esc(srcs)}</p>`:""}</div>`;
+      return `<div class="card"><strong>${sk.esc(g.topic)}</strong><p style="margin-top:6px; margin-bottom:0; font-size:13.5px; color:var(--ink-soft);">${sk.esc(g.guidance)}</p>${srcs?`<p style="margin:8px 0 0; font-size:11px; color:var(--ink-soft);">Sources:</p>${sk.sourcesPillsHTML(g.source_ids)}`:""}</div>`;
     }).join("")}
   `);
 }
@@ -1516,7 +1641,7 @@ function openEvidenceReference(){
         <strong style="display:block; margin-top:6px;">${sk.esc(e.topic)}</strong>
         <p style="margin:6px 0 0; font-size:13.5px; color:var(--ink-soft);">${sk.esc(e.summary)}</p>
         <p style="margin:8px 0 0; font-size:12.5px; color:var(--ink-soft);"><strong>Doesn't mean:</strong> ${sk.esc(e.does_not_mean)}</p>
-        ${srcs ? `<p style="margin:8px 0 0; font-size:11px; color:var(--ink-soft);">Sources: ${sk.esc(srcs)}</p>` : ""}
+        ${srcs ? `<p style="margin:8px 0 0; font-size:11px; color:var(--ink-soft);">Sources:</p>${sk.sourcesPillsHTML(e.source_ids)}` : ""}
       </div>`;
     }).join("")}
   `);
@@ -1532,6 +1657,30 @@ function openRulesReference(){
       <p style="margin:4px 0 0; font-size:13.5px;"><span style="color:var(--ink-soft);">Then:</span> ${sk.esc(r.action)}</p>
       <p style="margin:8px 0 0; font-size:12px; color:var(--ink-soft);">${sk.esc(r.note)}</p>
     </div>`).join("")}
+  `);
+}
+
+function openProtocolsReference(){
+  const protocols = sk.KB.collections.protocols;
+  sk.openModal(`
+    <h3>Training protocols</h3>
+    <p style="font-size:12.5px; color:var(--ink-soft); margin-bottom:14px;">The core frameworks behind Sidekick's approach — the overall shape of a plan, not a single lesson's steps.</p>
+    ${protocols.map(p=>{
+      const gateIds = sk.splitSemi(p.safety_gate_ids);
+      const gateBanners = gateIds.map(gid=>{
+        const g = sk.IDX.safetyGatesById.get(gid);
+        if(!g) return "";
+        const cls = sk.severityClass(g.severity);
+        return `<div class="banner ${cls}" style="margin:8px 0 0;"><span class="glyph">⚠️</span><div style="font-size:12.5px;"><strong>${sk.esc(g.name)}</strong></div></div>`;
+      }).join("");
+      return `<div class="card">
+        <strong>${sk.esc(p.name)}</strong>
+        <p style="margin:6px 0 0; font-size:13.5px;"><span style="color:var(--ink-soft);">Use when:</span> ${sk.esc(p.trigger)}</p>
+        <p style="margin:6px 0 0; font-size:13px; color:var(--ink-soft);">${sk.esc(p.route)}</p>
+        <p style="margin:8px 0 0; font-size:12.5px;"><span style="color:var(--ink-soft);">Success looks like:</span> ${sk.esc(p.success)}</p>
+        ${gateBanners}
+      </div>`;
+    }).join("")}
   `);
 }
 
@@ -1562,7 +1711,40 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.4.0";
+
+const CHANGELOG = [
+  { version: "1.4.0", notes: [
+    "Data integrity check tool (More → Data)",
+    "Printable / exportable training log",
+    "This version history screen",
+    "Accessibility contrast pass across light and dark themes",
+    "Lesson search now also matches success criteria and common mistakes",
+  ]},
+  { version: "1.3.0", notes: [
+    "Training protocols reference screen",
+    "Safety gate banners now show when each one applies, not just what to do",
+    "Evidence sources are tappable — see the key finding, limitations and a link out",
+    "Lessons can carry optional images or video",
+    "New Progress tab: weekly chart, category breakdown, full session history",
+    "Favourite/bookmark any lesson",
+  ]},
+  { version: "1.2.0", notes: [
+    "About page with support link and links to other Duffers apps",
+    "Light / dark / auto appearance setting",
+    "Persistent home logo in the top bar",
+    "Fixed a bug where a screen could show a previous screen's title",
+  ]},
+  { version: "1.1.0", notes: [
+    "Lesson prerequisites shown before you start",
+    "Tab bar hidden during onboarding and mid-session so progress can't be lost by mistake",
+    "Loading state on first launch",
+    "Source citations added to Myths and Owner guidance",
+  ]},
+  { version: "1.0.0", notes: [
+    "Initial release: dog profiles, 530-lesson library, adaptive training sessions, behaviour guide, skills tracker, daily programmes, safety gates, evidence library",
+  ]},
+];
 
 function pawLogoSVG(size){
   return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" aria-hidden="true">
@@ -1611,7 +1793,7 @@ function renderAbout(container){
 
     <div class="section-label">More from Duffers</div>
     <div class="card">
-      <h3 style="margin-bottom:4px;">🐾 Also logging your travels?</h3>
+      <h3 style="margin-bottom:4px;">🧭 Also logging your travels?</h3>
       <p style="font-size:13px; color:var(--ink-soft);">Waypoints is a personal travel log — everywhere you've been, and everywhere you're going. Same no-accounts, no-tracking approach.</p>
       <a href="https://dirtyduffers.github.io/waypoints/" target="_blank" rel="noopener" style="display:inline-block; background:#2F6B5E; color:#fff; font-size:13px; font-weight:700; padding:9px 16px; border-radius:10px; text-decoration:none;">Open Waypoints ↗</a>
     </div>
@@ -1652,11 +1834,162 @@ function renderAbout(container){
       <p style="font-size:13px; margin-bottom:0;">Created by <strong>Duffers</strong> — built for training with care, not for training data.</p>
     </div>
 
-    <p style="text-align:center; font-size:11.5px; color:var(--ink-soft); margin-top:8px;">Sidekick v${APP_VERSION} · by Duffers</p>
+    <p id="versionFooter" style="text-align:center; font-size:11.5px; color:var(--ink-soft); margin-top:8px; cursor:pointer;">Sidekick v${APP_VERSION} · by Duffers</p>
   `;
+  document.getElementById("versionFooter").addEventListener("click", openChangelog);
+}
+
+function openChangelog(){
+  sk.openModal(`
+    <h3>Version history</h3>
+    ${CHANGELOG.map(v=>`
+      <div class="card">
+        <strong>v${v.version}</strong>
+        <ul style="margin:8px 0 0; padding-left:18px; font-size:13px; color:var(--ink-soft);">
+          ${v.notes.map(n=>`<li style="margin-bottom:4px;">${sk.esc(n)}</li>`).join("")}
+        </ul>
+      </div>`).join("")}
+  `);
 }
 
 sk.SCREEN_RENDERERS.about = renderAbout;
+
+/* ---------- Content / data integrity check ---------- */
+function runDataIntegrityCheck(){
+  const KB = sk.KB, IDX = sk.IDX;
+  const errors = [], warnings = [];
+  const seenIds = new Set();
+
+  KB.collections.lessons.forEach(l=>{
+    if(seenIds.has(l.lesson_id)) errors.push(`Duplicate lesson ID: ${l.lesson_id}`);
+    seenIds.add(l.lesson_id);
+
+    ["title","objective","steps","success_criteria"].forEach(f=>{
+      if(!l[f] || !String(l[f]).trim()) errors.push(`${l.lesson_id}: missing required field "${f}"`);
+    });
+
+    sk.splitPipe(l.prerequisites).forEach(pid=>{
+      if(!IDX.lessonsById.has(pid)) errors.push(`${l.lesson_id}: prerequisite "${pid}" doesn't exist`);
+    });
+    sk.splitPipe(l.related_lessons).forEach(rid=>{
+      if(!IDX.lessonsById.has(rid)) errors.push(`${l.lesson_id}: related lesson "${rid}" doesn't exist`);
+    });
+    sk.splitSemi(l.safety_gate_ids).forEach(gid=>{
+      if(!IDX.safetyGatesById.has(gid)) errors.push(`${l.lesson_id}: safety gate "${gid}" doesn't exist`);
+    });
+    const srcIds = sk.splitSemi(l.source_ids).length ? sk.splitSemi(l.source_ids) : sk.splitPipe(l.source_ids);
+    srcIds.forEach(sid=>{
+      if(!IDX.sourcesById.has(sid)) warnings.push(`${l.lesson_id}: source "${sid}" doesn't exist`);
+    });
+    if(!sk.CATEGORY_COLOR_VARS[l.category]) warnings.push(`${l.lesson_id}: category "${l.category}" has no colour mapping (will show as grey)`);
+
+    if(l.media){
+      const stepCount = sk.splitPipe(l.steps).length;
+      if(l.media.steps && Array.isArray(l.media.steps) && l.media.steps.length !== stepCount){
+        warnings.push(`${l.lesson_id}: media.steps has ${l.media.steps.length} entries but there are ${stepCount} steps`);
+      }
+      const checkUrl = (u, label)=>{
+        if(u && u.startsWith("data:")) warnings.push(`${l.lesson_id}: ${label} is base64-embedded — consider a real file/URL instead to keep the library small`);
+      };
+      checkUrl(l.media.image||l.media.hero_image, "hero image");
+      checkUrl(l.media.video||l.media.hero_video, "hero video");
+      (l.media.steps||[]).forEach((s,i)=>{ if(s){ checkUrl(s.image,`step ${i+1} image`); checkUrl(s.video,`step ${i+1} video`); } });
+    }
+  });
+
+  KB.collections.behaviours.forEach(b=>{
+    sk.splitSemi(b.safety_gate_ids).forEach(gid=>{
+      if(!IDX.safetyGatesById.has(gid)) errors.push(`Behaviour ${b.behaviour_id}: safety gate "${gid}" doesn't exist`);
+    });
+  });
+  KB.collections.protocols.forEach(p=>{
+    sk.splitSemi(p.safety_gate_ids).forEach(gid=>{
+      if(!IDX.safetyGatesById.has(gid)) errors.push(`Protocol ${p.protocol_id}: safety gate "${gid}" doesn't exist`);
+    });
+  });
+  KB.collections.skills.forEach(s=>{
+    if(!sk.findMatchingLesson(s.skill_id)) warnings.push(`Skill ${s.skill_id} (${s.skill_name}) has no linked lesson`);
+  });
+
+  return { errors, warnings };
+}
+
+function runIntegrityCheckUI(container){
+  const result = runDataIntegrityCheck();
+  console.log("Sidekick data integrity check:", result);
+  const resultsEl = container.querySelector("#integrityResults");
+  const total = result.errors.length + result.warnings.length;
+  if(total === 0){
+    resultsEl.innerHTML = `<div class="banner banner-green"><span class="glyph">✅</span><div>All clear — no broken references or missing fields found.</div></div>`;
+    return;
+  }
+  const list = (items, label, cls)=> items.length ? `
+    <div class="banner ${cls}" style="flex-direction:column; align-items:stretch;">
+      <strong style="margin-bottom:6px;">${items.length} ${label}</strong>
+      <div style="max-height:180px; overflow-y:auto; font-size:12px; line-height:1.6;">
+        ${items.slice(0,50).map(m=>`<div>• ${sk.esc(m)}</div>`).join("")}
+        ${items.length>50 ? `<div style="margin-top:4px; opacity:0.8;">…and ${items.length-50} more — full list logged to console.</div>` : ""}
+      </div>
+    </div>` : "";
+  resultsEl.innerHTML = list(result.errors, "error(s)", "banner-red") + list(result.warnings, "warning(s)", "banner-amber");
+}
+
+/* ---------- Printable / exportable training log ---------- */
+function openPrintableLog(){
+  const dog = sk.getCurrentDog();
+  if(!dog){ sk.showToast("Add a dog first."); return; }
+  const sessions = sk.DB.sessions.filter(s=>s.dogId===dog.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const skillRows = sk.KB.collections.skills.map(s=>({ s, state: sk.dogSkillState(dog.id, s.skill_id) }));
+  const bySub = {};
+  skillRows.forEach(r=>{ (bySub[r.s.subcategory]=bySub[r.s.subcategory]||[]).push(r); });
+  const totalSessions = sessions.length;
+  const uniqueDays = new Set(sessions.map(s=>s.date.slice(0,10))).size;
+  const avgRate = sessions.length ? sessions.reduce((sum,s)=>sum+s.rate,0)/sessions.length : 0;
+  const generatedDate = new Date().toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});
+
+  const overlay = document.createElement("div");
+  overlay.id = "printLogOverlay";
+  overlay.innerHTML = `
+    <div class="print-toolbar no-print">
+      <button class="btn btn-ghost" id="printLogClose">← Back</button>
+      <button class="btn btn-primary" id="printLogGo">🖨️ Print / Save as PDF</button>
+    </div>
+    <div class="print-page">
+      <h1>${sk.esc(dog.name)}'s Training Log</h1>
+      <p class="print-sub">${sk.esc(dog.breed || dog.ageStage)} · Generated ${generatedDate} · Sidekick v${APP_VERSION}</p>
+
+      <h2>Summary</h2>
+      <table class="print-table">
+        <tr><td>Total sessions</td><td>${totalSessions}</td></tr>
+        <tr><td>Training days</td><td>${uniqueDays}</td></tr>
+        <tr><td>Average success rate</td><td>${Math.round(avgRate*100)}%</td></tr>
+      </table>
+
+      <h2>Skill progress</h2>
+      ${Object.keys(bySub).map(sub=>`
+        <h3>${sk.esc(sub)}</h3>
+        <table class="print-table">
+          ${bySub[sub].map(r=>`<tr><td>${sk.esc(r.s.skill_name)}</td><td>${r.state}</td></tr>`).join("")}
+        </table>
+      `).join("")}
+
+      <h2>Session history</h2>
+      ${sessions.length ? `
+      <table class="print-table print-table-wide">
+        <tr><th>Date</th><th>Lesson</th><th>Reps</th><th>Success</th><th>Felt</th></tr>
+        ${sessions.map(s=>{
+          const l = sk.IDX.lessonsById.get(s.lessonId);
+          return `<tr><td>${sk.fmtDate(s.date)}</td><td>${sk.esc(l?l.title:"—")}</td><td>${s.successCount}/${s.repCount}</td><td>${Math.round(s.rate*100)}%</td><td>${sk.esc(s.feedback||"—")}</td></tr>`;
+        }).join("")}
+      </table>` : `<p>No sessions logged yet.</p>`}
+
+      <p class="print-footer">Generated by Sidekick — a reward-based dog training companion.</p>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById("printLogClose").addEventListener("click", ()=>overlay.remove());
+  document.getElementById("printLogGo").addEventListener("click", ()=>window.print());
+}
 
 function confirmReset(){
   sk.openModal(`
@@ -1675,4 +2008,122 @@ function confirmReset(){
 }
 
 sk.SCREEN_RENDERERS.more = renderMore;
+})();
+
+/* ============================================================
+   PROGRESS TAB — training history, trends, category breakdown
+   ============================================================ */
+(function(){
+const sk = window.__sk;
+
+function weeklySessionCounts(dogId, weeks){
+  const now = new Date();
+  const dayMs = 86400000;
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const currentWeekStart = new Date(todayStart.getTime() - todayStart.getDay()*dayMs);
+  const buckets = [];
+  for(let i=weeks-1;i>=0;i--){
+    const weekStart = new Date(currentWeekStart.getTime() - i*7*dayMs);
+    const weekEnd = new Date(weekStart.getTime() + 7*dayMs);
+    const count = sk.DB.sessions.filter(s=>{
+      if(s.dogId!==dogId) return false;
+      const d = new Date(s.date);
+      return d>=weekStart && d<weekEnd;
+    }).length;
+    buckets.push({ label: weekStart.toLocaleDateString(undefined,{month:"short",day:"numeric"}), count });
+  }
+  return buckets;
+}
+
+function categoryBreakdown(dogId){
+  const counts = {};
+  sk.DB.sessions.filter(s=>s.dogId===dogId).forEach(s=>{
+    const l = sk.IDX.lessonsById.get(s.lessonId);
+    if(!l) return;
+    counts[l.category] = (counts[l.category]||0) + 1;
+  });
+  return Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+}
+
+function overallStats(dogId){
+  const sessions = sk.DB.sessions.filter(s=>s.dogId===dogId);
+  const uniqueDays = new Set(sessions.map(s=>s.date.slice(0,10))).size;
+  const avgRate = sessions.length ? sessions.reduce((sum,s)=>sum+s.rate,0)/sessions.length : 0;
+  return { total: sessions.length, days: uniqueDays, avgRate };
+}
+
+function renderProgress(container){
+  const dog = sk.getCurrentDog();
+  if(!dog){
+    container.innerHTML = '<div class="empty-state"><span class="glyph">📈</span>Add a dog to start tracking progress.</div>';
+    return;
+  }
+  const sessions = sk.DB.sessions.filter(s=>s.dogId===dog.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  if(!sessions.length){
+    container.innerHTML = `<div class="empty-state"><span class="glyph">📈</span>No sessions logged yet for ${sk.esc(dog.name)}.<br>Complete a lesson to start building a history.</div>`;
+    return;
+  }
+
+  const stats = overallStats(dog.id);
+  const streak = sk.trainingStreak(dog.id);
+  const weekly = weeklySessionCounts(dog.id, 8);
+  const maxWeekly = Math.max(1, ...weekly.map(w=>w.count));
+  const categories = categoryBreakdown(dog.id);
+  const maxCat = Math.max(1, ...categories.map(c=>c[1]));
+
+  container.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-box"><div class="num">${stats.total}</div><div class="lbl">Sessions</div></div>
+      <div class="stat-box"><div class="num">${stats.days}</div><div class="lbl">Training days</div></div>
+      <div class="stat-box"><div class="num">${streak}</div><div class="lbl">Day streak</div></div>
+    </div>
+    <div class="card" style="text-align:center;">
+      <div style="font-family:var(--font-display); font-size:26px; font-weight:700; color:var(--forest);">${Math.round(stats.avgRate*100)}%</div>
+      <div style="font-size:12.5px; color:var(--ink-soft);">average success rate across all sessions</div>
+    </div>
+
+    <div class="section-label">Last 8 weeks</div>
+    <div class="card">
+      <div style="display:flex; align-items:flex-end; gap:6px; height:100px;">
+        ${weekly.map(w=>`
+          <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%;">
+            <div style="width:100%; max-width:28px; background:var(--forest); border-radius:4px 4px 0 0; height:${Math.max(3, w.count/maxWeekly*76)}px;"></div>
+          </div>`).join("")}
+      </div>
+      <div style="display:flex; gap:6px; margin-top:6px;">
+        ${weekly.map(w=>`<div style="flex:1; text-align:center; font-size:9.5px; color:var(--ink-soft);">${w.label}</div>`).join("")}
+      </div>
+    </div>
+
+    <div class="section-label">By category</div>
+    <div class="card">
+      ${categories.map(([cat,count])=>`
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+          <div style="width:96px; font-size:12px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${sk.esc(cat)}</div>
+          <div class="progress-track" style="flex:1;"><div class="progress-fill" style="width:${(count/maxCat*100).toFixed(0)}%; background:var(${sk.getCategoryVar(cat)})"></div></div>
+          <div style="width:20px; text-align:right; font-size:12px; font-weight:700;">${count}</div>
+        </div>`).join("")}
+    </div>
+
+    <div class="section-label">Session history</div>
+    <div class="row-list">
+      ${sessions.map(s=>{
+        const l = sk.IDX.lessonsById.get(s.lessonId);
+        return `<button class="row" data-id="${s.lessonId}">
+          <div class="row-tab" style="background:var(${l?sk.getCategoryVar(l.category):'--ink-soft'})"></div>
+          <div class="row-body">
+            <div class="row-title">${sk.esc(l?l.title:"Deleted lesson")}</div>
+            <div class="row-meta">${sk.fmtDate(s.date)} · ${s.successCount}/${s.repCount} reps · ${Math.round(s.rate*100)}% · felt ${sk.esc(s.feedback||"—")}</div>
+          </div>
+          <span class="row-chev">›</span>
+        </button>`;
+      }).join("")}
+    </div>
+  `;
+  container.querySelectorAll(".row[data-id]").forEach(r=>{
+    r.addEventListener("click", ()=>sk.openLessonDetail(r.dataset.id));
+  });
+}
+
+sk.SCREEN_RENDERERS.progress = renderProgress;
 })();
