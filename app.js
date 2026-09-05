@@ -16,7 +16,7 @@ const CATEGORY_COLOR_VARS = {
   "Resource Guarding":"--cat-guard","Chasing & Predatory Behaviour":"--cat-chase","Reactivity":"--cat-react",
   "Enrichment":"--cat-enrich","Tricks & Games":"--cat-tricks","Owner Skills":"--cat-owner",
   "Assessment":"--cat-assess","Safety & Referral":"--cat-safety","Advanced / Real World":"--cat-advanced",
-  "Troubleshooting":"--cat-trouble","Behaviour Assessment":"--cat-assess"
+  "Troubleshooting":"--cat-trouble","Behaviour Assessment":"--cat-assess","Mouthing & Bite Inhibition":"--cat-mouth"
 };
 const CATEGORY_ICON = {
   "Foundation":"🌱","Communication & Engagement":"👀","Basic Skills":"🐾","Life Skills":"🏠",
@@ -25,7 +25,7 @@ const CATEGORY_ICON = {
   "Chewing & Destruction":"🦴","Resource Guarding":"🍖","Chasing & Predatory Behaviour":"🏃",
   "Reactivity":"⚡","Enrichment":"🧩","Tricks & Games":"🎉","Owner Skills":"🧑‍🏫",
   "Assessment":"📋","Safety & Referral":"🚨","Advanced / Real World":"🌍","Troubleshooting":"🔧",
-  "Behaviour Assessment":"📋"
+  "Behaviour Assessment":"📋","Mouthing & Bite Inhibition":"🦷"
 };
 const SKILL_STATES = ["Acquiring","Developing","Reliable","Generalising","Life-ready"];
 const STATE_COLOR = {"Acquiring":"var(--ink-soft)","Developing":"var(--sky)","Reliable":"var(--ochre)","Generalising":"var(--forest)","Life-ready":"var(--forest-dark)"};
@@ -51,10 +51,11 @@ function loadDB(){
     if(raw){
       const parsed = JSON.parse(raw);
       if(!parsed.favourites) parsed.favourites = []; // added after initial release — default for existing saves
+      if(!parsed.lessonNotes) parsed.lessonNotes = {}; // added after initial release — default for existing saves
       return parsed;
     }
   }catch(e){ console.error("Sidekick: failed to parse local data, starting fresh.", e); }
-  return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{}, favourites:[] };
+  return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{}, favourites:[], lessonNotes:{} };
 }
 function applyTheme(theme){
   document.body.dataset.theme = theme; // "light" | "dark" | "auto" — CSS handles all three
@@ -157,6 +158,18 @@ function toggleFavourite(lessonId){
   saveDB();
   return idx===-1; // true if it's now favourited
 }
+function getLessonNote(dogId, lessonId){
+  return (DB.lessonNotes[dogId] && DB.lessonNotes[dogId][lessonId]) || "";
+}
+function setLessonNote(dogId, lessonId, text){
+  if(!DB.lessonNotes[dogId]) DB.lessonNotes[dogId] = {};
+  if(text && text.trim()){
+    DB.lessonNotes[dogId][lessonId] = text.trim();
+  }else{
+    delete DB.lessonNotes[dogId][lessonId];
+  }
+  saveDB();
+}
 
 /* ---------------- Utility ---------------- */
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
@@ -179,15 +192,44 @@ function showToast(msg){
   clearTimeout(showToast._t);
   showToast._t = setTimeout(()=>t.classList.remove("show"), 2200);
 }
+let modalReturnFocus = null;
+function getFocusable(container){
+  return Array.from(container.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  ));
+}
 function openModal(html){
-  document.getElementById("modalSheet").innerHTML = '<div class="handle"></div>' + html;
+  modalReturnFocus = document.activeElement;
+  const sheet = document.getElementById("modalSheet");
+  sheet.innerHTML = '<div class="handle"></div>' + html;
   document.getElementById("modalOverlay").classList.add("active");
+  // Move focus into the dialog so screen readers announce it and keyboard
+  // users don't stay stranded on whatever triggered it.
+  const focusable = getFocusable(sheet);
+  (focusable[0] || sheet).focus();
 }
 function closeModal(){
   document.getElementById("modalOverlay").classList.remove("active");
+  if(modalReturnFocus && typeof modalReturnFocus.focus === "function"){
+    modalReturnFocus.focus();
+  }
+  modalReturnFocus = null;
 }
 document.addEventListener("click", (e)=>{
   if(e.target.id === "modalOverlay") closeModal();
+});
+document.addEventListener("keydown", (e)=>{
+  const overlay = document.getElementById("modalOverlay");
+  if(!overlay.classList.contains("active")) return;
+  if(e.key === "Escape"){ closeModal(); return; }
+  if(e.key !== "Tab") return;
+  // Basic focus trap: keep Tab cycling within the dialog while it's open.
+  const sheet = document.getElementById("modalSheet");
+  const focusable = getFocusable(sheet);
+  if(!focusable.length) return;
+  const first = focusable[0], last = focusable[focusable.length-1];
+  if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+  else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
 });
 
 /* ---------------- Router ---------------- */
@@ -258,7 +300,7 @@ window.__sk = {
   AVATAR_COLORS, DOG_EMOJI, AGE_STAGES,
   splitPipe, splitSemi, getCategoryVar, getCategoryIcon,
   getCurrentDog, ensureCurrentDog, dogSkillState, setDogSkillState, dogLessonProgress,
-  isFavourite, toggleFavourite,
+  isFavourite, toggleFavourite, getLessonNote, setLessonNote,
   uid, esc, fmtDate, daysAgo, showToast, openModal, closeModal, setTheme,
   goScreen, render, SCREEN_RENDERERS, saveDB, loadKnowledgeBase, loadDB, setTabbarVisible
 };
@@ -284,6 +326,18 @@ async function boot(){
     goScreen("onboarding");
   }else{
     goScreen("home");
+    // PWA shortcut: "Start today's suggestion" (manifest.json) launches with
+    // ?action=suggested — jump straight into a session instead of making
+    // the person tap through from Home.
+    const params = new URLSearchParams(location.search);
+    if(params.get("action") === "suggested"){
+      const dog = getCurrentDog();
+      if(dog){
+        const lesson = window.__sk.suggestedLesson(dog);
+        if(lesson) window.__sk.startSession(lesson.lesson_id);
+      }
+      history.replaceState(null, "", location.pathname);
+    }
   }
   if("serviceWorker" in navigator){
     navigator.serviceWorker.register("sw.js").catch(()=>{});
@@ -512,9 +566,16 @@ function suggestedLesson(dog){
   // note to adapt technique, not a stage to match against), so there's nothing meaningful to
   // filter on here. All lessons are eligible for all dogs regardless of ageStage.
   const progress = sk.DB.lessonProgress[dog.id] || {};
+  const prereqsMet = (l)=> sk.splitPipe(l.prerequisites).every(pid=>progress[pid]);
   const candidates = KB.collections.lessons;
   let notStarted = candidates.filter(l=>!progress[l.lesson_id]);
   let pool = notStarted.length ? notStarted : candidates;
+  // Don't suggest something the dog isn't ready for yet — prefer lessons whose
+  // prerequisites are already done. Only falls through to the full pool if
+  // every not-started lesson still has an unmet prerequisite (rare, but
+  // possible early on before any Foundation lessons are complete).
+  let ready = pool.filter(prereqsMet);
+  if(ready.length) pool = ready;
   // prioritise Beginner + Foundation/Communication for brand-new dogs
   let beginnerFirst = pool.filter(l=>l.difficulty==="Beginner" && (l.category==="Foundation"||l.category==="Communication & Engagement"));
   if(beginnerFirst.length && Object.keys(progress).length < 5) return beginnerFirst[0];
@@ -581,7 +642,7 @@ function renderHome(container){
       <button class="btn btn-primary btn-block" style="margin-top:14px;" id="startSuggested">Start session</button>
     </div>
 
-    <div class="section-label">This week</div>
+    <div class="section-label">Overview</div>
     <div class="stat-grid">
       <div class="stat-box"><div class="num">${streak}</div><div class="lbl">Day streak</div></div>
       <div class="stat-box"><div class="num">${totalSessions}</div><div class="lbl">Total sessions</div></div>
@@ -625,6 +686,7 @@ function renderHome(container){
 
 sk.SCREEN_RENDERERS.home = renderHome;
 window.__sk.setTopbar = setTopbar;
+window.__sk.suggestedLesson = suggestedLesson;
 window.__sk.trainingStreak = trainingStreak;
 window.__sk.recentSessions = recentSessions;
 })();
@@ -870,6 +932,13 @@ function openLessonDetail(lessonId){
       </div>
     </div>` : ""}
 
+    ${dog ? `
+    <div class="section-label">Your notes</div>
+    <div class="card">
+      <textarea id="lessonNoteInput" placeholder="e.g. worked better after a short walk first, struggles near the front door…" style="margin-bottom:8px;">${sk.esc(sk.getLessonNote(dog.id, lessonId))}</textarea>
+      <button class="btn btn-secondary btn-sm" id="saveNoteBtn">Save note</button>
+    </div>` : ""}
+
     ${prerequisites.length ? `
     <div class="section-label">Before this lesson</div>
     <div class="row-list" style="margin-bottom:14px;">${prerequisites.map(pid=>{
@@ -900,6 +969,9 @@ function openLessonDetail(lessonId){
     <div class="section-label">Ready for more?</div>
     <p style="font-size:14px; color:var(--ink-soft);">${progression.join(" · ")}</p>
 
+    ${l.real_world_application ? `<div class="section-label">Using it in real life</div>
+    <p style="font-size:14px; color:var(--ink-soft);">${sk.esc(l.real_world_application)}</p>` : ""}
+
     ${l.professional_help_if ? `<div class="banner banner-amber"><span class="glyph">🩺</span><div><strong>Get professional help if:</strong><br>${sk.esc(l.professional_help_if)}</div></div>` : ""}
 
     ${related.length ? `<div class="section-label">Related lessons</div>
@@ -924,6 +996,13 @@ function openLessonDetail(lessonId){
     sk.showToast(nowFav ? "Added to favourites" : "Removed from favourites");
   });
   document.getElementById("startBtn").addEventListener("click", ()=>sk.startSession(lessonId));
+  const noteBtn = document.getElementById("saveNoteBtn");
+  if(noteBtn){
+    noteBtn.addEventListener("click", ()=>{
+      sk.setLessonNote(dog.id, lessonId, document.getElementById("lessonNoteInput").value);
+      sk.showToast("Note saved.");
+    });
+  }
   container.querySelectorAll(".link-pill").forEach(p=>p.addEventListener("click", ()=>openLessonDetail(p.dataset.id)));
   container.querySelectorAll("#detailScreen .row[data-id]").forEach(r=>r.addEventListener("click", ()=>openLessonDetail(r.dataset.id)));
 }
@@ -1080,7 +1159,34 @@ window.__sk.severityClass = severityClass;
 window.__sk.sourcesLine = sourcesLine;
 window.__sk.sourcesPillsHTML = sourcesPillsHTML;
 window.__sk.openSourceDetail = openSourceDetail;
+function recalculateLessonProgress(dogId, lessonId){
+  const sessions = sk.DB.sessions.filter(s=>s.dogId===dogId && s.lessonId===lessonId);
+  if(!sessions.length){
+    if(sk.DB.lessonProgress[dogId]) delete sk.DB.lessonProgress[dogId][lessonId];
+    return;
+  }
+  const timesCompleted = sessions.length;
+  const avgSuccess = sessions.reduce((sum,s)=>sum+s.rate,0)/timesCompleted;
+  const lastPracticed = sessions.reduce((max,s)=> s.date>max?s.date:max, sessions[0].date);
+  if(!sk.DB.lessonProgress[dogId]) sk.DB.lessonProgress[dogId] = {};
+  sk.DB.lessonProgress[dogId][lessonId] = { timesCompleted, avgSuccess, lastPracticed };
+}
+
+// Deletes one logged session and rebuilds that lesson's aggregate stats from
+// whatever sessions remain, rather than leaving stale timesCompleted/avgSuccess
+// numbers that still counted the deleted attempt.
+function deleteSession(sessionId){
+  const idx = sk.DB.sessions.findIndex(s=>s.id===sessionId);
+  if(idx===-1) return;
+  const { dogId, lessonId } = sk.DB.sessions[idx];
+  sk.DB.sessions.splice(idx,1);
+  recalculateLessonProgress(dogId, lessonId);
+  sk.saveDB();
+}
+
 window.__sk.recordLessonAttempt = recordLessonAttempt;
+window.__sk.recalculateLessonProgress = recalculateLessonProgress;
+window.__sk.deleteSession = deleteSession;
 window.__sk.computeVerdict = computeVerdict;
 })();
 
@@ -1132,16 +1238,38 @@ function extractRouteCategories(routeStr){
 function renderBehaviours(container){
   sk.setTopbar("Behaviour guide", "Find management & training routes", "");
   const list = sk.KB.collections.behaviours;
-  container.innerHTML = `<div class="row-list">${list.map(b=>`
-    <button class="row" data-id="${b.behaviour_id}">
-      <div class="row-tab" style="background:var(--sky)"></div>
-      <div class="row-body">
-        <div class="row-title">${sk.esc(b.name)}</div>
-        <div class="row-meta">${sk.esc(b.category)}${b.safety_gate_ids?' · <span style="color:var(--red)">⚠ safety note</span>':''}</div>
-      </div>
-      <span class="row-chev">›</span>
-    </button>`).join("")}</div>`;
-  container.querySelectorAll(".row[data-id]").forEach(r=>r.addEventListener("click", ()=>openBehaviourDetail(r.dataset.id)));
+  container.innerHTML = `
+    <div class="search-input-wrap">
+      <span class="sicon">🔍</span>
+      <input type="text" id="behaviourSearch" placeholder="Search behaviours…">
+    </div>
+    <div id="behaviourResults"></div>
+  `;
+  function paint(query){
+    const q = query.trim().toLowerCase();
+    const filtered = q ? list.filter(b=>
+      b.name.toLowerCase().includes(q) ||
+      (b.category||"").toLowerCase().includes(q) ||
+      (b.possible_functions||"").toLowerCase().includes(q)
+    ) : list;
+    const resultsEl = container.querySelector("#behaviourResults");
+    if(!filtered.length){
+      resultsEl.innerHTML = `<div class="empty-state"><span class="glyph">🔎</span>No behaviours match "${sk.esc(query)}".</div>`;
+      return;
+    }
+    resultsEl.innerHTML = `<div class="row-list">${filtered.map(b=>`
+      <button class="row" data-id="${b.behaviour_id}">
+        <div class="row-tab" style="background:var(--sky)"></div>
+        <div class="row-body">
+          <div class="row-title">${sk.esc(b.name)}</div>
+          <div class="row-meta">${sk.esc(b.category)}${b.safety_gate_ids?' · <span style="color:var(--red)">⚠ safety note</span>':''}</div>
+        </div>
+        <span class="row-chev">›</span>
+      </button>`).join("")}</div>`;
+    resultsEl.querySelectorAll(".row[data-id]").forEach(r=>r.addEventListener("click", ()=>openBehaviourDetail(r.dataset.id)));
+  }
+  container.querySelector("#behaviourSearch").addEventListener("input", e=>paint(e.target.value));
+  paint("");
 }
 
 function openBehaviourDetail(id){
@@ -1248,27 +1376,45 @@ function renderSkills(container){
   sk.setTopbar("Skills", sk.KB.collections.skills.length+" tracked skills", "");
   const dog = sk.getCurrentDog();
   if(!dog){ container.innerHTML = '<div class="empty-state">Add a dog to track skills.</div>'; return; }
-  const bySub = {};
-  sk.KB.collections.skills.forEach(s=>{
-    (bySub[s.subcategory] = bySub[s.subcategory]||[]).push(s);
-  });
-  container.innerHTML = Object.keys(bySub).map(sub=>`
-    <div class="section-label">${sk.esc(sub)}</div>
-    <div class="row-list">
-      ${bySub[sub].map(s=>{
-        const state = sk.dogSkillState(dog.id, s.skill_id);
-        return `<button class="row" data-id="${s.skill_id}">
-          <div class="row-tab" style="background:${sk.STATE_COLOR[state]}"></div>
-          <div class="row-body">
-            <div class="row-title">${sk.esc(s.skill_name)}</div>
-            <div class="row-meta">${sk.esc(s.definition)}</div>
-          </div>
-          <span class="badge" style="background:${sk.STATE_COLOR[state]};color:#fff;">${state}</span>
-        </button>`;
-      }).join("")}
+  container.innerHTML = `
+    <div class="search-input-wrap">
+      <span class="sicon">🔍</span>
+      <input type="text" id="skillSearch" placeholder="Search skills…">
     </div>
-  `).join("");
-  container.querySelectorAll(".row[data-id]").forEach(r=>r.addEventListener("click", ()=>openSkillDetail(r.dataset.id)));
+    <div id="skillResults"></div>
+  `;
+  function paint(query){
+    const q = query.trim().toLowerCase();
+    const filtered = q ? sk.KB.collections.skills.filter(s=>
+      s.skill_name.toLowerCase().includes(q) || (s.definition||"").toLowerCase().includes(q)
+    ) : sk.KB.collections.skills;
+    const resultsEl = container.querySelector("#skillResults");
+    if(!filtered.length){
+      resultsEl.innerHTML = `<div class="empty-state"><span class="glyph">🔎</span>No skills match "${sk.esc(query)}".</div>`;
+      return;
+    }
+    const bySub = {};
+    filtered.forEach(s=>{ (bySub[s.subcategory] = bySub[s.subcategory]||[]).push(s); });
+    resultsEl.innerHTML = Object.keys(bySub).map(sub=>`
+      <div class="section-label">${sk.esc(sub)}</div>
+      <div class="row-list">
+        ${bySub[sub].map(s=>{
+          const state = sk.dogSkillState(dog.id, s.skill_id);
+          return `<button class="row" data-id="${s.skill_id}">
+            <div class="row-tab" style="background:${sk.STATE_COLOR[state]}"></div>
+            <div class="row-body">
+              <div class="row-title">${sk.esc(s.skill_name)}</div>
+              <div class="row-meta">${sk.esc(s.definition)}</div>
+            </div>
+            <span class="badge" style="background:${sk.STATE_COLOR[state]};color:#fff;">${state}</span>
+          </button>`;
+        }).join("")}
+      </div>
+    `).join("");
+    resultsEl.querySelectorAll(".row[data-id]").forEach(r=>r.addEventListener("click", ()=>openSkillDetail(r.dataset.id)));
+  }
+  container.querySelector("#skillSearch").addEventListener("input", e=>paint(e.target.value));
+  paint("");
 }
 
 function openSkillDetail(skillId){
@@ -1711,9 +1857,23 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "1.4.0";
+const APP_VERSION = "1.5.0";
 
 const CHANGELOG = [
+  { version: "1.5.0", notes: [
+    "Modal dialogs now support screen readers and keyboard navigation (focus trap, Escape to close)",
+    "Added Apple PWA meta tags for a cleaner install on iOS",
+    "Session history: paginated, and you can now delete an individual session (progress recalculates correctly)",
+    "Personal notes on any lesson, per dog",
+    "Search added to the Behaviour and Skills tabs",
+    "New PWA shortcut: long-press the app icon to jump straight into today's suggestion",
+    "About page: added an Evidence base section listing the real welfare/training sources behind the app (not just the Woofz UX-inspiration note), and made clear that data doesn't sync between devices",
+  ]},
+  { version: "1.4.1", notes: [
+    "Fixed: Home screen's \"This week\" stats were actually all-time — relabelled to Overview",
+    "Fixed: the suggested lesson could recommend something before its prerequisites were done",
+    "Added: \"Using it in real life\" guidance now shown on lessons that have it",
+  ]},
   { version: "1.4.0", notes: [
     "Data integrity check tool (More → Data)",
     "Printable / exportable training log",
@@ -1757,6 +1917,19 @@ function pawLogoSVG(size){
   </svg>`;
 }
 
+// Excludes Woofz deliberately: the data's own evidence_type field already
+// classifies it as "Product/topic inspiration" / "Commercial educational
+// material", not welfare/training evidence — it's disclosed separately via
+// copyright_note. This list is specifically the genuine evidence base.
+function sourceOrgSummary(){
+  const counts = {};
+  sk.KB.collections.evidence_sources.forEach(s=>{
+    if(s.organisation === "Woofz") return;
+    counts[s.organisation] = (counts[s.organisation]||0) + 1;
+  });
+  return Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+}
+
 function renderAbout(container){
   const kb = sk.KB;
   const reviewStatus = kb.collections.lessons[0] && kb.collections.lessons[0].review_status;
@@ -1790,6 +1963,17 @@ function renderAbout(container){
 
     ${kb.progression_note ? `<div class="section-label">A note on progression</div>
     <p style="font-size:13px; color:var(--ink-soft);">${sk.esc(kb.progression_note)}</p>` : ""}
+
+    <div class="section-label">Evidence base</div>
+    <div class="card">
+      <p style="font-size:13px; color:var(--ink-soft); margin-bottom:10px;">Sidekick's lessons and safety guidance draw on published welfare and training guidance from:</p>
+      ${sourceOrgSummary().map(([org,count])=>`
+        <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line); font-size:13.5px;">
+          <span>${sk.esc(org)}</span>
+          <span style="color:var(--ink-soft);">${count} source${count===1?"":"s"}</span>
+        </div>`).join("")}
+      <p style="font-size:12px; color:var(--ink-soft); margin-top:10px; margin-bottom:0;">Individual citations, with what each finding does and doesn't mean, are in More → Evidence library.</p>
+    </div>
 
     <div class="section-label">More from Duffers</div>
     <div class="card">
@@ -1826,7 +2010,8 @@ function renderAbout(container){
 
     <div class="section-label">Data & privacy</div>
     <div class="card">
-      <p style="font-size:13px; margin-bottom:0;">Everything you enter — dog profiles, sessions, skill progress — stays on this device in your browser's local storage. Nothing is sent anywhere. Back up or move devices anytime from More → Data → Export backup.</p>
+      <p style="font-size:13px; margin-bottom:0;">Everything you enter — dog profiles, sessions, skill progress — stays on this device in your browser's local storage. Nothing is sent anywhere.</p>
+      <p style="font-size:13px; margin:10px 0 0;"><strong>This means it doesn't sync between devices.</strong> Training on your phone and your tablet keeps two separate histories. To move to a new device or keep a backup, use More → Data → Export backup, then Import backup on the other device.</p>
     </div>
 
     <div class="section-label">Author</div>
@@ -2106,23 +2291,56 @@ function renderProgress(container){
     </div>
 
     <div class="section-label">Session history</div>
-    <div class="row-list">
-      ${sessions.map(s=>{
-        const l = sk.IDX.lessonsById.get(s.lessonId);
-        return `<button class="row" data-id="${s.lessonId}">
-          <div class="row-tab" style="background:var(${l?sk.getCategoryVar(l.category):'--ink-soft'})"></div>
-          <div class="row-body">
-            <div class="row-title">${sk.esc(l?l.title:"Deleted lesson")}</div>
-            <div class="row-meta">${sk.fmtDate(s.date)} · ${s.successCount}/${s.repCount} reps · ${Math.round(s.rate*100)}% · felt ${sk.esc(s.feedback||"—")}</div>
-          </div>
-          <span class="row-chev">›</span>
-        </button>`;
-      }).join("")}
-    </div>
+    <div id="sessionHistoryList"></div>
+    <button class="btn btn-ghost btn-block" id="loadMoreSessions" style="display:none; margin-top:4px;">Show more</button>
   `;
-  container.querySelectorAll(".row[data-id]").forEach(r=>{
-    r.addEventListener("click", ()=>sk.openLessonDetail(r.dataset.id));
+
+  const PAGE_SIZE = 15;
+  let shown = PAGE_SIZE;
+  function paintHistory(){
+    const listEl = container.querySelector("#sessionHistoryList");
+    const visible = sessions.slice(0, shown);
+    listEl.innerHTML = `<div class="row-list">${visible.map(s=>{
+      const l = sk.IDX.lessonsById.get(s.lessonId);
+      return `<div class="row" style="cursor:default;" data-session-id="${s.id}">
+        <div class="row-tab" style="background:var(${l?sk.getCategoryVar(l.category):'--ink-soft'})"></div>
+        <button class="row-body" data-id="${s.lessonId}" style="background:none; border:none; text-align:left; padding:0; cursor:pointer; font-family:inherit; color:inherit;">
+          <div class="row-title">${sk.esc(l?l.title:"Deleted lesson")}</div>
+          <div class="row-meta">${sk.fmtDate(s.date)} · ${s.successCount}/${s.repCount} reps · ${Math.round(s.rate*100)}% · felt ${sk.esc(s.feedback||"—")}</div>
+        </button>
+        <button class="icon-btn" data-delete-session="${s.id}" aria-label="Delete this session" style="width:30px;height:30px;font-size:14px;flex:none;">🗑️</button>
+      </div>`;
+    }).join("")}</div>`;
+    listEl.querySelectorAll("[data-id]").forEach(r=>{
+      r.addEventListener("click", ()=>sk.openLessonDetail(r.dataset.id));
+    });
+    listEl.querySelectorAll("[data-delete-session]").forEach(btn=>{
+      btn.addEventListener("click", (e)=>{
+        e.stopPropagation();
+        const sessionId = btn.dataset.deleteSession;
+        sk.openModal(`
+          <h3>Delete this session?</h3>
+          <p style="color:var(--ink-soft); font-size:14px;">This removes it from history and recalculates that lesson's progress from what's left. This can't be undone.</p>
+          <button class="btn btn-danger btn-block" id="confirmDeleteSession">Delete session</button>
+          <button class="btn btn-ghost btn-block" style="margin-top:8px;" id="cancelDeleteSession">Cancel</button>
+        `);
+        document.getElementById("confirmDeleteSession").addEventListener("click", ()=>{
+          sk.deleteSession(sessionId);
+          sk.closeModal();
+          sk.showToast("Session deleted.");
+          sk.render(); // full re-render so stats/charts reflect the change too
+        });
+        document.getElementById("cancelDeleteSession").addEventListener("click", sk.closeModal);
+      });
+    });
+    const moreBtn = container.querySelector("#loadMoreSessions");
+    moreBtn.style.display = shown < sessions.length ? "block" : "none";
+  }
+  container.querySelector("#loadMoreSessions").addEventListener("click", ()=>{
+    shown += PAGE_SIZE;
+    paintHistory();
   });
+  paintHistory();
 }
 
 sk.SCREEN_RENDERERS.progress = renderProgress;
