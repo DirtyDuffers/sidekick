@@ -30,6 +30,12 @@ const CATEGORY_ICON = {
 const SKILL_STATES = ["Acquiring","Developing","Reliable","Generalising","Life-ready"];
 const STATE_COLOR = {"Acquiring":"var(--ink-soft)","Developing":"var(--sky)","Reliable":"var(--ochre)","Generalising":"var(--forest)","Life-ready":"var(--forest-dark)"};
 const ADAPTIVE_FEEDBACK = ["too easy","about right","difficult","too difficult"];
+const FEEDBACK_DISPLAY = {
+  "too easy": "😄 Easy",
+  "about right": "🙂 Just right",
+  "difficult": "😐 Difficult",
+  "too difficult": "😣 Too difficult"
+};
 const AVATAR_COLORS = ["#2F5233","#3E6E82","#C08A2B","#6B4E9A","#B23A2E","#4E7A8C","#8A6D3A"];
 const DOG_EMOJI = ["🐕","🐶","🐩","🦮","🐕‍🦺"];
 const AGE_STAGES = ["Puppy","Adolescent","Adult","Senior"];
@@ -296,7 +302,7 @@ window.__sk = {
   get lessonFilter(){return lessonFilter;},
   get activeSession(){return activeSession;}, setActiveSession(v){activeSession=v;},
   get activeProgramme(){return activeProgramme;}, setActiveProgramme(v){activeProgramme=v;},
-  CATEGORY_COLOR_VARS, CATEGORY_ICON, SKILL_STATES, STATE_COLOR, ADAPTIVE_FEEDBACK,
+  CATEGORY_COLOR_VARS, CATEGORY_ICON, SKILL_STATES, STATE_COLOR, ADAPTIVE_FEEDBACK, FEEDBACK_DISPLAY,
   AVATAR_COLORS, DOG_EMOJI, AGE_STAGES,
   splitPipe, splitSemi, getCategoryVar, getCategoryIcon,
   getCurrentDog, ensureCurrentDog, dogSkillState, setDogSkillState, dogLessonProgress,
@@ -721,6 +727,25 @@ function suggestedLesson(dog){
 // Builds today's short multi-lesson session: the same lead pick as
 // suggestedLesson(), plus up to two more from different categories so the
 // session has some variety rather than three lessons on the same topic.
+// Looks for a lesson practiced very recently that came back "regress" (too
+// difficult, or difficult with a low success rate) so Home can surface a
+// short, honest note about it — this is what actually makes the adaptive
+// engine feel visible rather than invisible.
+function recentStruggleNote(dog){
+  const progress = sk.DB.lessonProgress[dog.id] || {};
+  let candidate = null;
+  Object.entries(progress).forEach(([lessonId, p])=>{
+    if(p.lastVerdict !== "regress") return;
+    if(sk.daysAgo(p.lastPracticed) > 2) return;
+    if(!candidate || p.lastPracticed > candidate.p.lastPracticed) candidate = {lessonId, p};
+  });
+  if(!candidate) return null;
+  const l = sk.IDX.lessonsById.get(candidate.lessonId);
+  if(!l) return null;
+  const when = sk.daysAgo(candidate.p.lastPracticed) === 0 ? "earlier today" : "last time";
+  return `Sidekick noticed ${sk.esc(l.title).toLowerCase()} was tricky ${when} — we'll ease back in before pushing forward again.`;
+}
+
 function todaysSessionLessons(dog){
   const progress = sk.DB.lessonProgress[dog.id] || {};
   const prereqsMet = (l)=> sk.splitPipe(l.prerequisites).every(pid=>progress[pid]);
@@ -804,12 +829,16 @@ function renderHome(container){
     }, {})
   ).filter(([,v])=>v.total>=4).sort((a,b)=>(b[1].done/b[1].total)-(a[1].done/a[1].total)).slice(0,3);
 
+  const struggleNote = recentStruggleNote(dog);
+
   container.innerHTML = `
     <div style="display:flex; flex-direction:column; align-items:center; padding:8px 0 18px;">
       <div style="border-radius:50%; box-shadow:0 4px 14px rgba(0,0,0,0.12);">${sk.dogAvatarHTML(dog, "lg")}</div>
       <h2 style="margin:10px 0 2px;">${sk.esc(dog.name)}</h2>
       <p style="color:var(--ink-soft); font-size:13px; margin:0;">${greeting}${sk.DB.dogs.length>1?" 👋":""}</p>
     </div>
+
+    ${struggleNote ? `<p style="font-size:12.5px; color:var(--ink-soft); text-align:center; margin:0 8px 12px; line-height:1.5;">🧠 ${struggleNote}</p>` : ""}
 
     <div class="card" id="sessionCard" style="cursor:pointer;">
       <div class="section-label" style="margin-top:0;">Today's training</div>
@@ -823,15 +852,16 @@ function renderHome(container){
           <div style="font-size:12px; color:var(--ink-soft);">${l.session_length_min||5} min</div>
         </div>`).join("")}
       <button class="btn btn-primary btn-block" style="margin-top:12px;" id="startTodaySession">Start today's session →</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:8px;" id="startQuickSession">⏱ Only have ${sessionLessons[0].session_length_min||5} minutes?</button>
     </div>
 
     ${streak>0 ? `<p style="text-align:center; font-size:13px; color:var(--ink-soft); margin:10px 0 4px;">🔥 ${streak} day training streak</p>` : ""}
 
     <div class="section-label">How can we help?</div>
     <div class="row-list">
-      <button class="row" id="quickWhatTrain"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title">🧠 What should I train?</div><div class="row-meta">Browse by category</div></div><span class="row-chev">›</span></button>
-      <button class="row" id="quickBehaviour"><div class="row-tab" style="background:var(--red)"></div><div class="row-body"><div class="row-title">🚨 Help with a behaviour</div><div class="row-meta">Answer a couple of questions</div></div><span class="row-chev">›</span></button>
-      <button class="row" id="quickBrowse"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">📚 Browse all lessons</div><div class="row-meta">${sk.KB.collections.lessons.length} lessons in the library</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="quickWhatTrain"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>What should I train?</div><div class="row-meta">Browse by category</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="quickBehaviour"><div class="row-tab" style="background:var(--red)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><path d="M4 5h16v10H8l-4 4z"/><path d="M12 8.5v2.5M12 14v.01"/></svg>Help with a behaviour</div><div class="row-meta">Answer a couple of questions</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="quickBrowse"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><path d="M4 5.5c0-.6.4-1 1-1h5.5a2 2 0 0 1 2 2v13a1.5 1.5 0 0 0-1.5-1.5H4z"/><path d="M20 5.5c0-.6-.4-1-1-1h-5.5a2 2 0 0 0-2 2v13a1.5 1.5 0 0 1 1.5-1.5H20z"/></svg>Browse all lessons</div><div class="row-meta">${sk.KB.collections.lessons.length} lessons in the library</div></div><span class="row-chev">›</span></button>
     </div>
 
     <div class="section-label">${sk.esc(dog.name)}'s progress <a href="#" id="seeProgress" style="font-size:11px;text-transform:none;letter-spacing:0;font-weight:600;color:var(--forest);">View all →</a></div>
@@ -857,6 +887,11 @@ function renderHome(container){
     e.stopPropagation();
     sk.startAdHocSession("Today's session", sessionLessons);
   });
+  container.querySelector("#startQuickSession").addEventListener("click", (e)=>{
+    e.stopPropagation();
+    const quickLesson = sessionLessons[0];
+    sk.startAdHocSession(`Quick ${quickLesson.session_length_min||5}-minute session`, [quickLesson]);
+  });
   document.getElementById("switchDogBtn").addEventListener("click", sk.openDogSwitcher);
   container.querySelector("#quickWhatTrain").addEventListener("click", ()=>sk.goScreen("lessons"));
   container.querySelector("#quickBehaviour").addEventListener("click", sk.openTroubleshootPicker);
@@ -868,6 +903,7 @@ sk.SCREEN_RENDERERS.home = renderHome;
 window.__sk.setTopbar = setTopbar;
 window.__sk.suggestedLesson = suggestedLesson;
 window.__sk.todaysSessionLessons = todaysSessionLessons;
+window.__sk.recentStruggleNote = recentStruggleNote;
 window.__sk.trainingStreak = trainingStreak;
 window.__sk.recentSessions = recentSessions;
 })();
@@ -899,7 +935,7 @@ function renderLessons(container){
       <button class="chip${f.category==='★ Favourites'?' selected':''}" data-val="★ Favourites">★ Favourites</button>
       ${sk.IDX.categories.map(c=>`<button class="chip${f.category===c?' selected':''}" data-val="${sk.esc(c)}">${sk.getCategoryIcon(c)} ${sk.esc(c)}</button>`).join("")}
     </div>
-    <div class="chip-group" id="diffChips">
+    <div class="chip-group" id="diffChips" style="flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px;">
       ${["All","Beginner","Intermediate","Advanced"].map(d=>`<button class="chip${f.difficulty===d?' selected':''}" data-val="${d}">${d}</button>`).join("")}
     </div>
     <div id="lessonResults"></div>
@@ -1081,6 +1117,46 @@ function renderMediaBlock(media){
   return "";
 }
 
+// Reusable animated concept diagrams — for lessons with no photo/video yet,
+// used only where a diagram genuinely explains the mechanic (not a general
+// decoration). Each is 3 beats cycling in a CSS loop; falls back to a
+// static side-by-side layout under prefers-reduced-motion automatically
+// via CSS, no JS branching needed.
+const CONCEPT_DIAGRAMS = {
+  "marker-timing": [
+    { label:"Dog notices", svg:'<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/><path d="M8 15c1.2 1 2.6 1.5 4 1.5s2.8-.5 4-1.5"/>' },
+    { label:"Mark it", svg:'<path d="M12 3v1.5M18.5 8.5c1.5 1.5 1.5 6-1 8H6.5c-2.5-2-2.5-6.5-1-8a6.5 6.5 0 0 1 13 0z"/><path d="M9.5 19.5a2.5 2.5 0 0 0 5 0"/>' },
+    { label:"Reward!", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
+  ],
+  "trade": [
+    { label:"Dog has item", svg:'<circle cx="12" cy="12" r="9"/><path d="M9 12h6M9 9h4M9 15h3"/>' },
+    { label:"Offer a trade", svg:'<path d="M7 8h10M7 8l3-3M7 8l3 3M17 16H7M17 16l-3-3M17 16l-3 3"/>' },
+    { label:"Fair swap", svg:'<path d="M9 11l2 2 4-4"/><circle cx="12" cy="12" r="9"/>' },
+  ],
+  "settle": [
+    { label:"Cue settle", svg:'<rect x="3" y="10" width="18" height="8" rx="2"/><path d="M7 10V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/>' },
+    { label:"Reward calm", svg:'<path d="M12 21c-4-3-8-6.5-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 4.5-4 8-8 11z"/>' },
+    { label:"Longer, calmer", svg:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>' },
+  ],
+};
+function conceptDiagramHTML(type){
+  const beats = CONCEPT_DIAGRAMS[type];
+  if(!beats) return "";
+  return `<div class="concept-diagram">${beats.map((b,i)=>`
+    <div class="concept-beat b${i+1}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${b.svg}</svg>
+      <span>${sk.esc(b.label)}</span>
+    </div>`).join("")}</div>`;
+}
+// Only lessons that genuinely teach one of these mechanics get a diagram —
+// not a blanket category match, which would attach it to unrelated lessons.
+const LESSON_DIAGRAM = {
+  "FND-002":"marker-timing", "FND-003":"marker-timing", "COM-015":"marker-timing",
+  "COM-016":"marker-timing", "TROUBLE-011":"marker-timing",
+  "SKL-022":"trade", "RG-005":"trade", "RG-006":"trade", "HOME-026":"trade", "CHEW-005":"trade",
+  "CALM-001":"settle", "CALM-003":"settle", "SKL-029":"settle", "CALM-020":"settle",
+};
+
 function openLessonDetail(lessonId){
   const l = sk.IDX.lessonsById.get(lessonId);
   if(!l) return;
@@ -1104,34 +1180,18 @@ function openLessonDetail(lessonId){
   container.innerHTML = `<div class="screen active" id="detailScreen">
     ${safetyGateBanners(l.safety_gate_ids)}
 
-    ${media || `<div class="lesson-hero-fallback" style="background:var(--canvas-raised); border:1px dashed var(--line); color:var(${catVar});">${catIcon}</div>`}
+    ${media || conceptDiagramHTML(LESSON_DIAGRAM[l.lesson_id]) || `<div class="lesson-hero-fallback" style="background:var(--canvas-raised); border:1px dashed var(--line); color:var(${catVar});">${catIcon}</div>`}
 
-    <p style="font-size:15px;"><strong>Today's goal:</strong> ${sk.esc(l.objective)}</p>
-    <p style="color:var(--ink-soft); font-size:13.5px;">${sk.esc(l.why_it_matters)}</p>
+    <p style="font-size:15px;">🎯 <strong>Today's goal:</strong> ${sk.esc(l.objective)}</p>
 
     <div class="stat-grid">
       <div class="stat-box"><div class="num" style="font-size:16px;">${sk.esc(l.session_length_min)} min</div><div class="lbl">Session length</div></div>
       <div class="stat-box"><div class="num" style="font-size:16px;">${sk.esc(l.difficulty)}</div><div class="lbl">Difficulty</div></div>
       <div class="stat-box"><div class="num" style="font-size:14px;">${sk.esc(l.equipment||"None")}</div><div class="lbl">Equipment</div></div>
     </div>
-    ${l.evidence_level ? `<p style="font-size:11.5px; color:var(--ink-soft); margin-top:-8px;">${sk.esc(l.evidence_level)}</p>` : ""}
-
-    ${progress ? `<div class="card" style="background:var(--green-soft); border-color:#b9cca9;">
-      <strong>Your progress</strong>
-      <div style="font-size:13px; color:var(--forest-dark); margin-top:4px;">
-        Trained ${progress.timesCompleted}× · last ${sk.daysAgo(progress.lastPracticed)===0?"today":sk.daysAgo(progress.lastPracticed)+"d ago"} · avg success ${Math.round(progress.avgSuccess*100)}%
-      </div>
-    </div>` : ""}
-
-    ${dog ? `
-    <div class="section-label">Your notes</div>
-    <div class="card">
-      <textarea id="lessonNoteInput" placeholder="e.g. worked better after a short walk first, struggles near the front door…" style="margin-bottom:8px;">${sk.esc(sk.getLessonNote(dog.id, lessonId))}</textarea>
-      <button class="btn btn-secondary btn-sm" id="saveNoteBtn">Save note</button>
-    </div>` : ""}
 
     ${prerequisites.length ? `
-    <div class="section-label">Before this lesson</div>
+    <div class="section-label">Before you start</div>
     <div class="row-list" style="margin-bottom:14px;">${prerequisites.map(pid=>{
       const pl = sk.IDX.lessonsById.get(pid);
       if(!pl) return "";
@@ -1143,17 +1203,26 @@ function openLessonDetail(lessonId){
       </button>`;
     }).join("")}</div>` : ""}
 
-    <div class="section-label">Setup</div>
-    <p style="font-size:14.5px;">${sk.esc(l.setup)}</p>
+    ${l.setup ? `<p style="font-size:14px; color:var(--ink-soft); margin-bottom:16px;"><strong style="color:var(--ink);">Setup:</strong> ${sk.esc(l.setup)}</p>` : ""}
 
-    <div class="section-label">How to teach it</div>
+    <div class="section-label">Let's practise</div>
     <div class="card">${steps.map((s,i)=>`<div class="step-item"><div class="step-num-lg" style="background:var(${catVar});">${i+1}</div><div style="padding-top:4px;">${sk.esc(s)}${(l.media&&l.media.steps&&l.media.steps[i])?renderMediaBlock(l.media.steps[i]):""}</div></div>`).join("")}</div>
+
+    <button class="btn btn-primary btn-block" id="startBtn" style="margin-bottom:28px;">▶ Start training</button>
+
+    <div style="display:flex; align-items:center; gap:10px; margin:4px 0 18px;">
+      <div style="flex:1; height:1px; background:var(--line);"></div>
+      <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft);">📚 Learn more</span>
+      <div style="flex:1; height:1px; background:var(--line);"></div>
+    </div>
+
+    <p style="color:var(--ink-soft); font-size:13.5px;"><strong>Why it matters:</strong> ${sk.esc(l.why_it_matters)}</p>
 
     <div class="section-label">Success criteria</div>
     <p style="font-size:14.5px;">${sk.esc(l.success_criteria)}</p>
 
     ${mistakes.length ? `<div class="section-label">Common mistakes</div>
-    <div class="card">${mistakes.map(m=>`<div class="checklist-item"><span class="dot"></span>${sk.esc(m)}</div>`).join("")}</div>` : ""}
+    <div style="margin-bottom:16px;">${mistakes.map(m=>`<div class="checklist-item"><span class="dot"></span>${sk.esc(m)}</div>`).join("")}</div>` : ""}
 
     <div class="section-label">If it's too hard</div>
     <p style="font-size:14px; color:var(--ink-soft);">${regression.join(" · ")}</p>
@@ -1171,10 +1240,20 @@ function openLessonDetail(lessonId){
       return rl ? `<span class="link-pill" data-id="${id}">${sk.esc(rl.title)}</span>` : "";
     }).join("")}</div>` : ""}
 
-    ${sourcesLine(l.source_ids) ? `<p style="font-size:11.5px; color:var(--ink-soft); margin-top:18px;">Sources:</p>${sourcesPillsHTML(l.source_ids)}` : ""}
+    ${progress ? `<div class="section-label">Your progress</div>
+    <p style="font-size:13.5px; color:var(--ink-soft);">
+      Trained ${progress.timesCompleted}× · last ${sk.daysAgo(progress.lastPracticed)===0?"today":sk.daysAgo(progress.lastPracticed)+"d ago"} · avg success ${Math.round(progress.avgSuccess*100)}%
+    </p>` : ""}
 
-    <div style="height:12px;"></div>
-    <button class="btn btn-primary btn-block" id="startBtn">Start session</button>
+    ${dog ? `
+    <div class="section-label">Your notes</div>
+    <div class="card">
+      <textarea id="lessonNoteInput" placeholder="e.g. worked better after a short walk first, struggles near the front door…" style="margin-bottom:8px;">${sk.esc(sk.getLessonNote(dog.id, lessonId))}</textarea>
+      <button class="btn btn-secondary btn-sm" id="saveNoteBtn">Save note</button>
+    </div>` : ""}
+
+    ${sourcesLine(l.source_ids) ? `<p style="font-size:11.5px; color:var(--ink-soft); margin-top:18px;">Sources:</p>${sourcesPillsHTML(l.source_ids)}` : ""}
+    ${l.evidence_level ? `<p style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">${sk.esc(l.evidence_level)}</p>` : ""}
   </div>`;
 
   document.getElementById("backBtn").addEventListener("click", ()=>sk.goScreen(sk.currentScreen));
@@ -1217,26 +1296,30 @@ function renderSessionScreen(){
     <div class="card" style="text-align:center;">
       <div class="badge" style="background:var(${sk.getCategoryVar(l.category)});color:#fff;">${sk.getCategoryIcon(l.category)} ${sk.esc(l.category)}</div>
       <p style="font-size:14px; margin:12px 0 4px; color:var(--ink-soft);">Tap after each repetition</p>
-      <div style="font-size:40px; font-weight:700; font-family:var(--font-display); margin:8px 0;" id="repCounter">0</div>
-      <div style="font-size:13px; color:var(--ink-soft); margin-bottom:16px;" id="repBreakdown">0 successful</div>
+      <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); margin-top:6px;" id="repLabel">Rep 0</div>
+      <div style="font-size:40px; font-weight:700; font-family:var(--font-display); margin:2px 0;" id="repCounter">0</div>
+      <div style="font-size:13px; color:var(--ink-soft); margin-bottom:16px;" id="repBreakdown">successful, 0 so far</div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-primary btn-block" id="repSuccess">✓ Success</button>
         <button class="btn btn-ghost btn-block" id="repMiss">✗ No luck</button>
       </div>
     </div>
 
-    <div class="section-label">Reminders</div>
-    <div class="card">
-      <div class="checklist-item"><span class="dot"></span>${sk.esc(l.success_criteria)}</div>
-    </div>
+    <div class="section-label">Reminder</div>
+    <div class="checklist-item"><span class="dot"></span>${sk.esc(l.success_criteria)}</div>
 
-    <button class="btn btn-secondary btn-block" id="finishBtn" style="margin-top:8px;">Finish session</button>
+    <button class="btn btn-secondary btn-block" id="finishBtn" style="margin-top:16px;">Finish session</button>
   </div>`;
 
   function paint(){
+    const total = session.reps.length;
     const succ = session.reps.filter(r=>r).length;
-    container.querySelector("#repCounter").textContent = session.reps.length;
-    container.querySelector("#repBreakdown").textContent = succ+" successful";
+    container.querySelector("#repLabel").textContent = "Rep "+total;
+    container.querySelector("#repCounter").textContent = succ;
+    const pct = total ? Math.round(succ/total*100) : 0;
+    container.querySelector("#repBreakdown").textContent = total
+      ? `successful${total>=3?" · 🔥 "+pct+"% success rate":""}`
+      : "successful, 0 so far";
   }
   container.querySelector("#repSuccess").addEventListener("click", ()=>{ session.reps.push(true); paint(); });
   container.querySelector("#repMiss").addEventListener("click", ()=>{ session.reps.push(false); paint(); });
@@ -1289,8 +1372,11 @@ function recordLessonAttempt(dog, l, reps, feedback, programmeId){
   const prior = sk.DB.lessonProgress[dog.id][l.lesson_id];
   const timesCompleted = (prior?prior.timesCompleted:0) + 1;
   const avgSuccess = prior ? (prior.avgSuccess*prior.timesCompleted + rate)/timesCompleted : rate;
-  sk.DB.lessonProgress[dog.id][l.lesson_id] = { timesCompleted, avgSuccess, lastPracticed: rec.date };
   const {verdict, verdictText, cls} = computeVerdict(l, dog, rate, feedback);
+  sk.DB.lessonProgress[dog.id][l.lesson_id] = {
+    timesCompleted, avgSuccess, lastPracticed: rec.date,
+    lastVerdict: verdict, lastFeedback: feedback
+  };
   return { rate, successCount, total, verdict, verdictText, cls };
 }
 
@@ -1310,7 +1396,7 @@ function renderFeedbackStep(){
     </div>
     <div class="section-label">How did ${sk.getCurrentDog().name} find it?</div>
     <div class="chip-group" id="feedbackChips">
-      ${sk.ADAPTIVE_FEEDBACK.map(f=>`<button type="button" class="chip" data-val="${f}">${f}</button>`).join("")}
+      ${sk.ADAPTIVE_FEEDBACK.map(f=>`<button type="button" class="chip" data-val="${f}">${sk.FEEDBACK_DISPLAY[f]}</button>`).join("")}
     </div>
     <button class="btn btn-primary btn-block" id="saveSessionBtn" disabled>Save session</button>
   </div>`;
@@ -1417,6 +1503,44 @@ const BEHAVIOUR_DECISION_TREE = {
   // dedicated decision-tree lesson in the data; their own category route
   // (CHASE / REACT / ALONE) already points somewhere sensible.
 };
+// Expands the internal category-code shorthand in a route string (e.g.
+// "COM check-in → WAL loose lead") into full category names for display —
+// the codes are a convenient internal shorthand, not something a user
+// should have to decode.
+function formatTrainingRoute(routeStr){
+  if(!routeStr) return "";
+  let out = routeStr;
+  Object.keys(ROUTE_CODE_TO_CATEGORY).forEach(code=>{
+    out = out.replace(new RegExp(`\\b${code}\\b`, "g"), ROUTE_CODE_TO_CATEGORY[code]);
+  });
+  return out;
+}
+
+// Behaviour-level severity, used to stop every behaviour looking equally
+// alarming just because it has *a* safety gate attached. This is a
+// deliberate editorial judgement, not derived mechanically from the gates'
+// own severity — nearly every gate is itself marked "Red" (e.g. the
+// child-interaction gate genuinely is serious *if that situation applies*),
+// which would make common, usually-benign behaviours like jumping look as
+// alarming as biting. The distinction here is how inherent the risk is to
+// the behaviour as a whole, not whether an edge-case trigger exists.
+const BEHAVIOUR_SEVERITY = {
+  "BEH-001": "amber", // Jumping up — common, usually benign; child-interaction is a situational caveat
+  "BEH-002": "amber", // Pulling on lead — common; traffic risk is situational, not inherent to pulling itself
+  "BEH-003": "amber", // Barking — common; sudden-change-suggesting-pain is the situational caveat
+  "BEH-004": "red",   // Growling — can precede a bite; genuine warning communication
+  "BEH-005": "red",   // Biting — unambiguously safety-critical
+  "BEH-006": "red",   // Resource guarding — can escalate to a bite
+  "BEH-007": "amber", // Destruction — welfare/property concern, not physical danger to people
+  "BEH-008": "amber", // Toileting indoors — medical-consideration caveat, not danger
+  "BEH-009": "amber", // Chasing — situational traffic/wildlife risk, not aggression toward people
+  "BEH-010": "red",   // Reactivity — can involve fear or aggression escalating
+  "BEH-011": "amber", // Separation distress — welfare concern, not physical danger to others
+};
+function behaviourSeverity(b){
+  return BEHAVIOUR_SEVERITY[b.behaviour_id] || "amber";
+}
+
 function extractRouteCategories(routeStr){
   const found = [];
   Object.keys(ROUTE_CODE_TO_CATEGORY).forEach(code=>{
@@ -1448,15 +1572,22 @@ function renderBehaviours(container){
       resultsEl.innerHTML = `<div class="empty-state"><span class="glyph">🔎</span>No behaviours match "${sk.esc(query)}".</div>`;
       return;
     }
-    resultsEl.innerHTML = `<div class="row-list">${filtered.map(b=>`
-      <button class="row" data-id="${b.behaviour_id}">
+    resultsEl.innerHTML = `<div class="row-list">${filtered.map(b=>{
+      const sev = behaviourSeverity(b);
+      const sevBadge = sev === "red"
+        ? '<span style="color:var(--red); font-weight:700;">🔴 Safety-critical</span>'
+        : sev === "amber"
+          ? '<span style="color:var(--ochre); font-weight:600;">🟡 Consider</span>'
+          : "";
+      return `<button class="row" data-id="${b.behaviour_id}">
         <div class="row-tab" style="background:var(--sky)"></div>
         <div class="row-body">
           <div class="row-title">${sk.esc(b.name)}</div>
-          <div class="row-meta">${sk.esc(b.category)}${b.safety_gate_ids?' · <span style="color:var(--red)">⚠ safety note</span>':''}</div>
+          <div class="row-meta">${sk.esc(b.category)}${sevBadge?' · '+sevBadge:''}</div>
         </div>
         <span class="row-chev">›</span>
-      </button>`).join("")}</div>`;
+      </button>`;
+    }).join("")}</div>`;
     resultsEl.querySelectorAll(".row[data-id]").forEach(r=>r.addEventListener("click", ()=>openBehaviourDetail(r.dataset.id)));
   }
   container.querySelector("#behaviourSearch").addEventListener("input", e=>paint(e.target.value));
@@ -1476,14 +1607,22 @@ function openBehaviourDetail(id){
   const decisionTreeId = BEHAVIOUR_DECISION_TREE[id];
   const decisionTreeLesson = decisionTreeId ? sk.IDX.lessonsById.get(decisionTreeId) : null;
   const gateIds = sk.splitSemi(b.safety_gate_ids);
+  const sev = behaviourSeverity(b);
 
   const container = document.getElementById("screens");
   container.innerHTML = `<div class="screen active">
-    ${gateIds.map(gid=>{
+    ${sev === "red" ? gateIds.map(gid=>{
       const g = sk.IDX.safetyGatesById.get(gid); if(!g) return "";
       const cls = sk.severityClass(g.severity);
       return `<div class="banner ${cls}"><span class="glyph">⚠️</span><div><strong>${sk.esc(g.name)}</strong><br><span style="font-size:12.5px;">${sk.esc(g.trigger)}</span><br>${sk.esc(g.action)}</div></div>`;
-    }).join("")}
+    }).join("") : gateIds.length ? `
+      <div style="display:flex; gap:8px; align-items:flex-start; padding:10px 2px; margin-bottom:8px; font-size:13px; color:var(--ink-soft);">
+        <span style="flex:none;">⚠️</span>
+        <div><strong style="color:var(--ink);">Safety considerations:</strong> ${gateIds.map(gid=>{
+          const g = sk.IDX.safetyGatesById.get(gid);
+          return g ? sk.esc(g.trigger) : "";
+        }).filter(Boolean).join(" ")} Use management and consider professional guidance if any of this applies.</div>
+      </div>` : ""}
 
     <div class="section-label">Possible functions</div>
     <p style="font-size:14.5px;">${sk.esc(b.possible_functions)}</p>
@@ -1500,7 +1639,7 @@ function openBehaviourDetail(id){
     </button>` : ""}
 
     <div class="section-label">Suggested training route</div>
-    <p style="font-size:13px; color:var(--ink-soft);">${sk.esc(b.training_route)}</p>
+    <p style="font-size:13px; color:var(--ink-soft);">${sk.esc(formatTrainingRoute(b.training_route))}</p>
     <div class="row-list">${routeLessons.map(l=>`
       <button class="row" data-id="${l.lesson_id}">
         <div class="row-tab" style="background:var(${sk.getCategoryVar(l.category)})"></div>
@@ -1513,6 +1652,7 @@ function openBehaviourDetail(id){
 }
 
 sk.SCREEN_RENDERERS.behaviours = renderBehaviours;
+window.__sk.formatTrainingRoute = formatTrainingRoute;
 })();
 
 /* ============================================================
@@ -1914,7 +2054,7 @@ function renderProgrammeFeedback(){
     </div>
     <p style="font-size:12.5px; color:var(--ink-soft);">One rating applies to every block — each lesson still keeps its own individual progress the next time you train it on its own.</p>
     <div class="chip-group" id="feedbackChips">
-      ${sk.ADAPTIVE_FEEDBACK.map(f=>`<button type="button" class="chip" data-val="${f}">${f}</button>`).join("")}
+      ${sk.ADAPTIVE_FEEDBACK.map(f=>`<button type="button" class="chip" data-val="${f}">${sk.FEEDBACK_DISPLAY[f]}</button>`).join("")}
     </div>
     <button class="btn btn-primary btn-block" id="saveProgBtn" disabled>Save programme</button>
   </div>`;
@@ -2136,9 +2276,20 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "1.9.2";
+const APP_VERSION = "2.1.0";
 
 const CHANGELOG = [
+  { version: "2.1.0", notes: [
+    "New: animated concept diagrams for lessons that teach a specific mechanic (marker timing, trading, settling) — a real illustration instead of a placeholder icon, with a static fallback for reduced-motion settings",
+    "Reduced card overuse on the lesson and session screens — mistakes and reminders are now clean typography, not cards inside cards",
+    "This completes the priority list from the last review: adaptive session messaging, quick 5-minute sessions, the Learn/Do-it lesson restructure, and card reduction",
+  ]},
+  { version: "2.0.0", notes: [
+    "Replaced all emoji navigation icons with a consistent set of custom line icons — bottom tab bar and Home's quick-action rows",
+    "Behaviour guide now shows genuine severity: only bite/guarding/reactivity-type behaviours get a prominent red warning; common everyday behaviours (jumping, pulling, barking) show a small \"Consider\" note instead of an alarming warning",
+    "Fixed internal category shorthand (COM, CALM, WAL etc.) leaking into the Behaviour guide's suggested training routes — now shown in plain English",
+    "Category and difficulty filters on Train now both scroll horizontally instead of wrapping across multiple rows",
+  ]},
   { version: "1.9.2", notes: [
     "Fixed: the top bar overlapped the iPhone status bar when launched from the home screen — now respects the safe area",
     "Updated the About page's content note — the old wording defensively explained Woofz's role, which no longer reflects how diverse the content actually is; it now credits the real sources (Dogs Trust, RSPCA, Blue Cross, Battersea, ABTC, AVSAB) directly",

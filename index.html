@@ -177,9 +177,10 @@ button{font-family:inherit;}
   color:var(--ink-soft); font-size:10.5px; font-family:var(--font-body); font-weight:600;
   letter-spacing:0.01em;
 }
-.tab .tab-icon{font-size:19px; line-height:1;}
+.tab .tab-icon{width:22px; height:22px; display:flex; align-items:center; justify-content:center;}
+.tab .tab-icon svg{width:100%; height:100%;}
 .tab.active{color:var(--forest);}
-.tab.active .tab-icon{transform:translateY(-1px);}
+.tab.active .tab-icon svg{transform:translateY(-1px);}
 
 /* ---------- Buttons ---------- */
 .btn{
@@ -317,6 +318,32 @@ textarea{resize:vertical; min-height:70px;}
   width:100%; aspect-ratio:16/9; border-radius:var(--radius-m); margin-bottom:14px;
   display:flex; align-items:center; justify-content:center; font-size:52px;
 }
+
+/* ---------- Reusable concept diagrams (for lessons with no photo/video yet) ---------- */
+.concept-diagram{
+  width:100%; aspect-ratio:16/9; border-radius:var(--radius-m); margin-bottom:14px;
+  background:var(--canvas-raised); border:1px solid var(--line);
+  display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;
+}
+.concept-beat{
+  position:absolute; display:flex; flex-direction:column; align-items:center; gap:10px;
+  opacity:0; font-size:13px; font-weight:700; color:var(--forest); text-align:center; padding:0 20px;
+}
+.concept-beat svg{width:20vw; height:20vw; max-width:56px; max-height:56px;}
+.concept-beat.b1{animation:conceptCycle 6s infinite;}
+.concept-beat.b2{animation:conceptCycle 6s infinite; animation-delay:2s;}
+.concept-beat.b3{animation:conceptCycle 6s infinite; animation-delay:4s;}
+@keyframes conceptCycle{
+  0%{opacity:0; transform:scale(0.85);}
+  6%{opacity:1; transform:scale(1);}
+  28%{opacity:1; transform:scale(1);}
+  34%{opacity:0; transform:scale(0.85);}
+  100%{opacity:0;}
+}
+@media (prefers-reduced-motion: reduce){
+  .concept-beat{animation:none !important; opacity:1 !important; position:static !important;}
+  .concept-diagram{flex-wrap:wrap; gap:16px; padding:14px;}
+}
 .checklist-item{display:flex; align-items:center; gap:8px; padding:5px 0; font-size:14px; color:var(--ink-soft);}
 .checklist-item .dot{width:5px; height:5px; border-radius:50%; background:var(--ink-soft); flex:none;}
 
@@ -386,11 +413,11 @@ textarea{resize:vertical; min-height:70px;}
 
   <!-- ===================== TAB BAR ===================== -->
   <div class="tabbar" id="tabbar">
-    <button class="tab active" data-screen="home"><span class="tab-icon">🏡</span>Home</button>
-    <button class="tab" data-screen="lessons"><span class="tab-icon">📖</span>Train</button>
-    <button class="tab" data-screen="behaviours"><span class="tab-icon">🧭</span>Behaviour</button>
-    <button class="tab" data-screen="progress"><span class="tab-icon">📈</span>Progress</button>
-    <button class="tab" data-screen="more"><span class="tab-icon">👤</span>Profile</button>
+    <button class="tab active" data-screen="home"><span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M10 20v-5h4v5"/></svg></span>Home</button>
+    <button class="tab" data-screen="lessons"><span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5c0-.6.4-1 1-1h5.5a2 2 0 0 1 2 2v13a1.5 1.5 0 0 0-1.5-1.5H4z"/><path d="M20 5.5c0-.6-.4-1-1-1h-5.5a2 2 0 0 0-2 2v13a1.5 1.5 0 0 1 1.5-1.5H20z"/></svg></span>Train</button>
+    <button class="tab" data-screen="behaviours"><span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-2 5-5 2 2-5z"/></svg></span>Behaviour</button>
+    <button class="tab" data-screen="progress"><span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M6 15l4-5 3 3 5-7"/><path d="M14 6h4v4"/></svg></span>Progress</button>
+    <button class="tab" data-screen="more"><span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 20c.8-3.4 3.4-5.5 6.5-5.5s5.7 2.1 6.5 5.5"/></svg></span>Profile</button>
   </div>
 
   <div class="modal-overlay" id="modalOverlay">
