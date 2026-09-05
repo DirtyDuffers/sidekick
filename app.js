@@ -244,10 +244,10 @@ const TAB_SCREENS = ["home","lessons","behaviours","skills","more","about","prog
 const SCREEN_TOPBAR_DEFAULTS = {
   onboarding: ["Sidekick", "Let's get set up"],
   home: ["Sidekick", "Reward-based training"],
-  lessons: ["Lessons", ""],
+  lessons: ["Train", "Lessons, skills & programmes"],
   behaviours: ["Behaviour guide", "Find management & training routes"],
   skills: ["Skills", ""],
-  more: ["More", "Programmes, safety & data"],
+  more: ["Profile", "Dog, safety & data"],
   about: ["About", "Sidekick"],
   progress: ["Progress", "Your training history"],
 };
@@ -356,7 +356,54 @@ const sk = window.__sk;
 function dogAvatarHTML(dog, size){
   const cls = size==="lg" ? "avatar avatar-lg" : "avatar";
   const color = dog.color || sk.AVATAR_COLORS[0];
+  if(dog.photo){
+    return '<div class="'+cls+'" style="background:'+color+'; padding:0; overflow:hidden;"><img src="'+dog.photo+'" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:50%;"></div>';
+  }
   return '<div class="'+cls+'" style="background:'+color+'">'+ (dog.emoji||"🐕") +'</div>';
+}
+
+// Reads an image file, downscales it on a canvas, and re-encodes as JPEG.
+// Runs iteratively, shrinking further if the result is still too large —
+// localStorage has a hard ~5-10MB quota shared with the whole app (the
+// lesson library alone is ~1.4MB), so an uncompressed phone photo (often
+// 2-5MB) could not just fail to save but crowd out real training data.
+function compressImageToDataURL(file, maxDim, quality){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>reject(new Error("Couldn't read that file."));
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=>reject(new Error("That doesn't look like a valid image."));
+      img.onload = ()=>{
+        let width = img.naturalWidth, height = img.naturalHeight;
+        if(!width || !height){ reject(new Error("That image appears to be empty.")); return; }
+        if(width > height){ if(width > maxDim){ height = Math.round(height*maxDim/width); width = maxDim; } }
+        else{ if(height > maxDim){ width = Math.round(width*maxDim/height); height = maxDim; } }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function processDogPhoto(file){
+  if(!file.type || !file.type.startsWith("image/")) throw new Error("Please choose an image file.");
+  const MAX_CHARS = 70000; // ~50KB of actual image data once base64 overhead is accounted for
+  let dim = 260, quality = 0.75;
+  let dataUrl = await compressImageToDataURL(file, dim, quality);
+  let attempts = 0;
+  while(dataUrl.length > MAX_CHARS && attempts < 5){
+    quality = Math.max(0.35, quality - 0.15);
+    if(quality <= 0.35) dim = Math.round(dim*0.8);
+    dataUrl = await compressImageToDataURL(file, dim, quality);
+    attempts++;
+  }
+  return dataUrl;
 }
 
 function renderOnboarding(container){
@@ -369,6 +416,13 @@ function renderOnboarding(container){
         <p style="color:var(--ink-soft); font-size:14.5px;">A calm, reward-based training companion.<br>Let's set up your dog's profile.</p>
       </div>
       <form id="onboardForm">
+        <label>Photo <span style="font-weight:400;color:var(--ink-soft)">(optional — you can always add one later)</span></label>
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+          <div id="ob_photoPreview">${sk.dogAvatarHTML({emoji:sk.DOG_EMOJI[0], color:sk.AVATAR_COLORS[0], photo:null}, "lg")}</div>
+          <button type="button" class="btn btn-secondary btn-sm" id="ob_photoPick">Add photo</button>
+          <input type="file" id="ob_photoInput" accept="image/*" style="display:none;">
+        </div>
+
         <label>Dog's name</label>
         <input type="text" id="ob_name" placeholder="e.g. Bramble" required maxlength="30">
 
@@ -380,7 +434,7 @@ function renderOnboarding(container){
           ${sk.AGE_STAGES.map((s,i)=>`<button type="button" class="chip${i===1?' selected':''}" data-val="${s}">${s}</button>`).join("")}
         </div>
 
-        <label>Pick an avatar</label>
+        <label>Pick an avatar <span style="font-weight:400;color:var(--ink-soft)">(used if no photo)</span></label>
         <div class="chip-group" id="ob_emoji">
           ${sk.DOG_EMOJI.map((e,i)=>`<button type="button" class="chip${i===0?' selected':''}" data-val="${e}" style="font-size:18px;">${e}</button>`).join("")}
         </div>
@@ -395,6 +449,27 @@ function renderOnboarding(container){
   let stage = sk.AGE_STAGES[1];
   let emoji = sk.DOG_EMOJI[0];
   let color = sk.AVATAR_COLORS[0];
+  let photo = null;
+  function repaintObPreview(){
+    container.querySelector("#ob_photoPreview").innerHTML = sk.dogAvatarHTML({emoji, color, photo}, "lg");
+    container.querySelector("#ob_photoPick").textContent = photo ? "Change photo" : "Add photo";
+  }
+  container.querySelector("#ob_photoPick").addEventListener("click", ()=>container.querySelector("#ob_photoInput").click());
+  container.querySelector("#ob_photoInput").addEventListener("change", async (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const pickBtn = container.querySelector("#ob_photoPick");
+    pickBtn.textContent = "Processing…"; pickBtn.disabled = true;
+    try{
+      photo = await sk.processDogPhoto(file);
+    }catch(err){
+      sk.showToast(err.message || "Couldn't use that photo.");
+    }finally{
+      pickBtn.disabled = false;
+      repaintObPreview();
+    }
+    e.target.value = "";
+  });
   container.querySelector("#ob_stage").addEventListener("click", e=>{
     const b = e.target.closest(".chip"); if(!b) return;
     container.querySelectorAll("#ob_stage .chip").forEach(c=>c.classList.remove("selected"));
@@ -404,11 +479,13 @@ function renderOnboarding(container){
     const b = e.target.closest(".chip"); if(!b) return;
     container.querySelectorAll("#ob_emoji .chip").forEach(c=>c.classList.remove("selected"));
     b.classList.add("selected"); emoji = b.dataset.val;
+    repaintObPreview();
   });
   container.querySelector("#ob_color").addEventListener("click", e=>{
     const b = e.target.closest(".chip"); if(!b) return;
     container.querySelectorAll("#ob_color .chip").forEach(c=>c.classList.remove("selected"));
     b.classList.add("selected"); color = b.dataset.val;
+    repaintObPreview();
   });
   container.querySelector("#onboardForm").addEventListener("submit", e=>{
     e.preventDefault();
@@ -416,7 +493,7 @@ function renderOnboarding(container){
     if(!name) return;
     const dog = {
       id: sk.uid(), name, breed: container.querySelector("#ob_breed").value.trim(),
-      ageStage: stage, emoji, color, createdAt: new Date().toISOString()
+      ageStage: stage, emoji, color, photo, createdAt: new Date().toISOString()
     };
     sk.DB.dogs.push(dog);
     sk.DB.activeDogId = dog.id;
@@ -430,10 +507,19 @@ function renderOnboarding(container){
 function renderDogForm(existing){
   const isNew = !existing;
   const dog = existing || {name:"",breed:"",ageStage:sk.AGE_STAGES[1],emoji:sk.DOG_EMOJI[0],color:sk.AVATAR_COLORS[0]};
-  let stage = dog.ageStage, emoji = dog.emoji, color = dog.color;
+  let stage = dog.ageStage, emoji = dog.emoji, color = dog.color, photo = dog.photo || null;
   const html = `
     <h3>${isNew?"Add a dog":"Edit "+sk.esc(dog.name)}</h3>
     <form id="dogForm">
+      <label>Photo <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+        <div id="df_photoPreview">${dogAvatarHTML({...dog, emoji, color, photo}, "lg")}</div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <button type="button" class="btn btn-secondary btn-sm" id="df_photoPick">${photo?"Change photo":"Add photo"}</button>
+          ${photo ? '<button type="button" class="btn btn-ghost btn-sm" id="df_photoRemove">Remove photo</button>' : ""}
+        </div>
+        <input type="file" id="df_photoInput" accept="image/*" style="display:none;">
+      </div>
       <label>Name</label>
       <input type="text" id="df_name" value="${sk.esc(dog.name)}" maxlength="30" required>
       <label>Breed <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
@@ -442,7 +528,7 @@ function renderDogForm(existing){
       <div class="chip-group" id="df_stage">
         ${sk.AGE_STAGES.map(s=>`<button type="button" class="chip${s===stage?' selected':''}" data-val="${s}">${s}</button>`).join("")}
       </div>
-      <label>Avatar</label>
+      <label>${photo?"Backup avatar":"Avatar"} <span style="font-weight:400;color:var(--ink-soft)">${photo?"(shown if the photo can't load)":""}</span></label>
       <div class="chip-group" id="df_emoji">
         ${sk.DOG_EMOJI.map(e=>`<button type="button" class="chip${e===emoji?' selected':''}" data-val="${e}" style="font-size:18px;">${e}</button>`).join("")}
       </div>
@@ -455,6 +541,42 @@ function renderDogForm(existing){
   `;
   sk.openModal(html);
   const root = document.getElementById("modalSheet");
+  function repaintPreview(){
+    root.querySelector("#df_photoPreview").innerHTML = dogAvatarHTML({...dog, emoji, color, photo}, "lg");
+    const pickBtn = root.querySelector("#df_photoPick");
+    if(pickBtn) pickBtn.textContent = photo ? "Change photo" : "Add photo";
+    let removeBtn = root.querySelector("#df_photoRemove");
+    if(photo && !removeBtn){
+      removeBtn = document.createElement("button");
+      removeBtn.type = "button"; removeBtn.id = "df_photoRemove";
+      removeBtn.className = "btn btn-ghost btn-sm";
+      removeBtn.textContent = "Remove photo";
+      pickBtn.insertAdjacentElement("afterend", removeBtn);
+      removeBtn.addEventListener("click", ()=>{ photo = null; repaintPreview(); });
+    }else if(!photo && removeBtn){
+      removeBtn.remove();
+    }
+  }
+  root.querySelector("#df_photoPick").addEventListener("click", ()=>root.querySelector("#df_photoInput").click());
+  const removeBtnInit = root.querySelector("#df_photoRemove");
+  if(removeBtnInit) removeBtnInit.addEventListener("click", ()=>{ photo = null; repaintPreview(); });
+  root.querySelector("#df_photoInput").addEventListener("change", async (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const pickBtn = root.querySelector("#df_photoPick");
+    const prevLabel = pickBtn.textContent;
+    pickBtn.textContent = "Processing…"; pickBtn.disabled = true;
+    try{
+      photo = await sk.processDogPhoto(file);
+      repaintPreview();
+    }catch(err){
+      sk.showToast(err.message || "Couldn't use that photo.");
+    }finally{
+      pickBtn.disabled = false;
+      if(root.querySelector("#df_photoPick")) root.querySelector("#df_photoPick").textContent = photo ? "Change photo" : prevLabel;
+    }
+    e.target.value = "";
+  });
   root.querySelector("#df_stage").addEventListener("click", e=>{
     const b=e.target.closest(".chip"); if(!b) return;
     root.querySelectorAll("#df_stage .chip").forEach(c=>c.classList.remove("selected"));
@@ -464,11 +586,13 @@ function renderDogForm(existing){
     const b=e.target.closest(".chip"); if(!b) return;
     root.querySelectorAll("#df_emoji .chip").forEach(c=>c.classList.remove("selected"));
     b.classList.add("selected"); emoji=b.dataset.val;
+    repaintPreview();
   });
   root.querySelector("#df_color").addEventListener("click", e=>{
     const b=e.target.closest(".chip"); if(!b) return;
     root.querySelectorAll("#df_color .chip").forEach(c=>c.classList.remove("selected"));
     b.classList.add("selected"); color=b.dataset.val;
+    repaintPreview();
   });
   root.querySelector("#dogForm").addEventListener("submit", e=>{
     e.preventDefault();
@@ -476,11 +600,11 @@ function renderDogForm(existing){
     if(!name) return;
     const breed = root.querySelector("#df_breed").value.trim();
     if(isNew){
-      const nd = {id:sk.uid(), name, breed, ageStage:stage, emoji, color, createdAt:new Date().toISOString()};
+      const nd = {id:sk.uid(), name, breed, ageStage:stage, emoji, color, photo, createdAt:new Date().toISOString()};
       sk.DB.dogs.push(nd);
       sk.setCurrentDogId(nd.id);
     }else{
-      Object.assign(dog, {name, breed, ageStage:stage, emoji, color});
+      Object.assign(dog, {name, breed, ageStage:stage, emoji, color, photo});
       sk.saveDB();
     }
     sk.closeModal();
@@ -542,6 +666,7 @@ function openDogSwitcher(){
 
 sk.SCREEN_RENDERERS.onboarding = renderOnboarding;
 window.__sk.dogAvatarHTML = dogAvatarHTML;
+window.__sk.processDogPhoto = processDogPhoto;
 window.__sk.renderDogForm = renderDogForm;
 window.__sk.openDogSwitcher = openDogSwitcher;
 })();
@@ -558,6 +683,12 @@ function setTopbar(title, sub, actionsHTML){
   document.getElementById("topbarActions").innerHTML = actionsHTML||"";
 }
 
+// Categories that are owner education/reference/assessment content rather
+// than hands-on exercises to actually do with the dog — excluded from
+// "today's session" and the home suggestion so a new dog isn't scheduled
+// "Recognising bite-risk warning signs" as exercise #2.
+const NON_SESSION_CATEGORIES = new Set(["Owner Skills","Safety & Referral","Assessment","Behaviour Assessment","Troubleshooting"]);
+
 function suggestedLesson(dog){
   const IDX = sk.IDX, KB = sk.KB;
   // Prefer a Foundation/Comms lesson the dog hasn't completed yet; fall back to least-recently-practised.
@@ -567,7 +698,7 @@ function suggestedLesson(dog){
   // filter on here. All lessons are eligible for all dogs regardless of ageStage.
   const progress = sk.DB.lessonProgress[dog.id] || {};
   const prereqsMet = (l)=> sk.splitPipe(l.prerequisites).every(pid=>progress[pid]);
-  const candidates = KB.collections.lessons;
+  const candidates = KB.collections.lessons.filter(l=>!NON_SESSION_CATEGORIES.has(l.category));
   let notStarted = candidates.filter(l=>!progress[l.lesson_id]);
   let pool = notStarted.length ? notStarted : candidates;
   // Don't suggest something the dog isn't ready for yet — prefer lessons whose
@@ -585,6 +716,44 @@ function suggestedLesson(dog){
     return (ta||0)-(tb||0);
   });
   return pool[0] || candidates[0];
+}
+
+// Builds today's short multi-lesson session: the same lead pick as
+// suggestedLesson(), plus up to two more from different categories so the
+// session has some variety rather than three lessons on the same topic.
+function todaysSessionLessons(dog){
+  const progress = sk.DB.lessonProgress[dog.id] || {};
+  const prereqsMet = (l)=> sk.splitPipe(l.prerequisites).every(pid=>progress[pid]);
+  const candidates = sk.KB.collections.lessons.filter(l=>!NON_SESSION_CATEGORIES.has(l.category));
+  let notStarted = candidates.filter(l=>!progress[l.lesson_id]);
+  let pool = notStarted.length ? notStarted : candidates;
+  let ready = pool.filter(prereqsMet);
+  if(ready.length) pool = ready;
+  pool = pool.slice().sort((a,b)=>{
+    const pa = progress[a.lesson_id], pb = progress[b.lesson_id];
+    const ta = pa?pa.lastPracticed:0, tb = pb?pb.lastPracticed:0;
+    return (ta||0)-(tb||0);
+  });
+
+  const lead = suggestedLesson(dog);
+  const picked = [lead];
+  const usedCategories = new Set([lead.category]);
+  for(const l of pool){
+    if(picked.length >= 3) break;
+    if(picked.some(p=>p.lesson_id===l.lesson_id)) continue;
+    if(usedCategories.has(l.category)) continue;
+    picked.push(l);
+    usedCategories.add(l.category);
+  }
+  // if variety ran out (small library edge case), fill remaining slots regardless of category
+  if(picked.length < 3){
+    for(const l of pool){
+      if(picked.length >= 3) break;
+      if(picked.some(p=>p.lesson_id===l.lesson_id)) continue;
+      picked.push(l);
+    }
+  }
+  return picked;
 }
 
 function skillSummary(dogId){
@@ -616,77 +785,89 @@ function trainingStreak(dogId){
 function renderHome(container){
   const dog = sk.getCurrentDog();
   if(!dog){ sk.goScreen("onboarding"); return; }
-  setTopbar("Sidekick", "Hey "+dog.name+" 👋",
-    `<button class="icon-btn" id="switchDogBtn" aria-label="Switch dog">${dog.emoji}</button>`);
+  setTopbar("Sidekick", "", `<button class="icon-btn" id="switchDogBtn" aria-label="Switch dog" style="padding:0; overflow:hidden;">${dog.photo?`<img src="${dog.photo}" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`:dog.emoji}</button>`);
 
-  const lesson = suggestedLesson(dog);
+  const sessionLessons = todaysSessionLessons(dog);
+  const totalMin = sessionLessons.reduce((sum,l)=>sum+(l.session_length_min||5), 0);
   const counts = skillSummary(dog.id);
   const streak = trainingStreak(dog.id);
-  const recent = recentSessions(dog.id, 3);
-  const totalSessions = sk.DB.sessions.filter(s=>s.dogId===dog.id).length;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const skillTotal = sk.KB.collections.skills.length;
+  const topCategories = Object.entries(
+    sk.KB.collections.lessons.reduce((acc,l)=>{
+      const p = sk.DB.lessonProgress[dog.id]?.[l.lesson_id];
+      if(!acc[l.category]) acc[l.category] = {done:0,total:0};
+      acc[l.category].total++;
+      if(p) acc[l.category].done++;
+      return acc;
+    }, {})
+  ).filter(([,v])=>v.total>=4).sort((a,b)=>(b[1].done/b[1].total)-(a[1].done/a[1].total)).slice(0,3);
 
   container.innerHTML = `
-    <div class="section-label">Today's suggestion</div>
-    <div class="card" id="suggestCard" style="cursor:pointer;">
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
-        <div>
-          <div class="badge" style="background:var(${sk.getCategoryVar(lesson.category)});color:#fff;">${sk.getCategoryIcon(lesson.category)} ${sk.esc(lesson.category)}</div>
-          <h3 style="margin-top:10px;">${sk.esc(lesson.title)}</h3>
-          <p style="color:var(--ink-soft); font-size:13.5px; margin-bottom:0;">${sk.esc(lesson.objective)}</p>
-        </div>
-      </div>
-      <div style="display:flex; gap:14px; margin-top:12px; font-size:12.5px; color:var(--ink-soft);">
-        <span>⏱ ${sk.esc(lesson.session_length_min)} min</span>
-        <span>${sk.esc(lesson.difficulty)}</span>
-      </div>
-      <button class="btn btn-primary btn-block" style="margin-top:14px;" id="startSuggested">Start session</button>
+    <div style="display:flex; flex-direction:column; align-items:center; padding:8px 0 18px;">
+      <div style="border-radius:50%; box-shadow:0 4px 14px rgba(0,0,0,0.12);">${sk.dogAvatarHTML(dog, "lg")}</div>
+      <h2 style="margin:10px 0 2px;">${sk.esc(dog.name)}</h2>
+      <p style="color:var(--ink-soft); font-size:13px; margin:0;">${greeting}${sk.DB.dogs.length>1?" 👋":""}</p>
     </div>
 
-    <div class="section-label">Overview</div>
-    <div class="stat-grid">
-      <div class="stat-box"><div class="num">${streak}</div><div class="lbl">Day streak</div></div>
-      <div class="stat-box"><div class="num">${totalSessions}</div><div class="lbl">Total sessions</div></div>
-      <div class="stat-box"><div class="num">${counts["Life-ready"]}</div><div class="lbl">Life-ready skills</div></div>
-    </div>
-
-    <div class="section-label">Skill progress <a href="#" id="seeSkills" style="font-size:11px;text-transform:none;letter-spacing:0;font-weight:600;color:var(--forest);">View all →</a></div>
-    <div class="card">
-      ${sk.SKILL_STATES.map(st=>`
-        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-          <div style="width:78px; font-size:12px; color:var(--ink-soft);">${st}</div>
-          <div class="progress-track" style="flex:1;"><div class="progress-fill" style="width:${(counts[st]/sk.KB.collections.skills.length*100).toFixed(0)}%; background:${sk.STATE_COLOR[st]}"></div></div>
-          <div style="width:20px; text-align:right; font-size:12px; font-weight:700;">${counts[st]}</div>
+    <div class="card" id="sessionCard" style="cursor:pointer;">
+      <div class="section-label" style="margin-top:0;">Today's training</div>
+      <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:10px;">
+        <span style="font-size:22px; font-weight:700; font-family:var(--font-display);">⭐ ${totalMin} min session</span>
+      </div>
+      ${sessionLessons.map((l,i)=>`
+        <div style="display:flex; align-items:center; gap:10px; padding:7px 0; ${i>0?'border-top:1px solid var(--line);':''}">
+          <div style="width:22px; height:22px; border-radius:50%; background:var(${sk.getCategoryVar(l.category)}); color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:none;">${i+1}</div>
+          <div style="flex:1; font-size:14px;">${sk.esc(l.title)}</div>
+          <div style="font-size:12px; color:var(--ink-soft);">${l.session_length_min||5} min</div>
         </div>`).join("")}
+      <button class="btn btn-primary btn-block" style="margin-top:12px;" id="startTodaySession">Start today's session →</button>
     </div>
 
-    <div class="section-label">Recent sessions</div>
-    ${recent.length ? `<div class="row-list">${recent.map(s=>{
-      const l = sk.IDX.lessonsById.get(s.lessonId);
-      return `<div class="row" style="cursor:default;">
-        <div class="row-tab" style="background:var(${sk.getCategoryVar(l?l.category:'')})"></div>
-        <div class="row-body">
-          <div class="row-title">${sk.esc(l?l.title:"Deleted lesson")}</div>
-          <div class="row-meta">${sk.fmtDate(s.date)} · ${s.successCount}/${s.repCount} reps · felt ${s.feedback}</div>
-        </div>
-      </div>`;
-    }).join("")}</div>` : `<div class="empty-state"><span class="glyph">🐾</span>No sessions logged yet — start with the suggestion above.</div>`}
+    ${streak>0 ? `<p style="text-align:center; font-size:13px; color:var(--ink-soft); margin:10px 0 4px;">🔥 ${streak} day training streak</p>` : ""}
+
+    <div class="section-label">How can we help?</div>
+    <div class="row-list">
+      <button class="row" id="quickWhatTrain"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title">🧠 What should I train?</div><div class="row-meta">Browse by category</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="quickBehaviour"><div class="row-tab" style="background:var(--red)"></div><div class="row-body"><div class="row-title">🚨 Help with a behaviour</div><div class="row-meta">Answer a couple of questions</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="quickBrowse"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">📚 Browse all lessons</div><div class="row-meta">${sk.KB.collections.lessons.length} lessons in the library</div></div><span class="row-chev">›</span></button>
+    </div>
+
+    <div class="section-label">${sk.esc(dog.name)}'s progress <a href="#" id="seeProgress" style="font-size:11px;text-transform:none;letter-spacing:0;font-weight:600;color:var(--forest);">View all →</a></div>
+    <div class="card">
+      ${topCategories.length ? topCategories.map(([cat,v])=>`
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+          <div style="width:120px; font-size:11.5px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${sk.esc(cat)}</div>
+          <div class="progress-track" style="flex:1;"><div class="progress-fill" style="width:${Math.round(v.done/v.total*100)}%; background:var(${sk.getCategoryVar(cat)})"></div></div>
+          <div style="width:34px; text-align:right; font-size:12px; font-weight:700;">${Math.round(v.done/v.total*100)}%</div>
+        </div>`).join("") : `<p style="font-size:13px; color:var(--ink-soft); margin:0;">Complete a few lessons to see progress by category here.</p>`}
+      <div style="display:flex; justify-content:space-between; margin-top:10px; padding-top:10px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-soft);">
+        <span>${counts["Life-ready"]||0} of ${skillTotal} skills life-ready</span>
+        <span>${counts["Reliable"]||0} reliable</span>
+      </div>
+    </div>
   `;
 
-  container.querySelector("#suggestCard").addEventListener("click", (e)=>{
-    if(e.target.id==="startSuggested") return;
-    sk.openLessonDetail(lesson.lesson_id);
+  container.querySelector("#sessionCard").addEventListener("click", (e)=>{
+    if(e.target.id==="startTodaySession") return;
+    sk.openLessonDetail(sessionLessons[0].lesson_id);
   });
-  container.querySelector("#startSuggested").addEventListener("click", (e)=>{
+  container.querySelector("#startTodaySession").addEventListener("click", (e)=>{
     e.stopPropagation();
-    sk.startSession(lesson.lesson_id);
+    sk.startAdHocSession("Today's session", sessionLessons);
   });
   document.getElementById("switchDogBtn").addEventListener("click", sk.openDogSwitcher);
-  container.querySelector("#seeSkills").addEventListener("click", (e)=>{ e.preventDefault(); sk.goScreen("skills"); });
+  container.querySelector("#quickWhatTrain").addEventListener("click", ()=>sk.goScreen("lessons"));
+  container.querySelector("#quickBehaviour").addEventListener("click", sk.openTroubleshootPicker);
+  container.querySelector("#quickBrowse").addEventListener("click", ()=>sk.goScreen("lessons"));
+  container.querySelector("#seeProgress").addEventListener("click", (e)=>{ e.preventDefault(); sk.goScreen("progress"); });
 }
 
 sk.SCREEN_RENDERERS.home = renderHome;
 window.__sk.setTopbar = setTopbar;
 window.__sk.suggestedLesson = suggestedLesson;
+window.__sk.todaysSessionLessons = todaysSessionLessons;
 window.__sk.trainingStreak = trainingStreak;
 window.__sk.recentSessions = recentSessions;
 })();
@@ -698,10 +879,17 @@ window.__sk.recentSessions = recentSessions;
 const sk = window.__sk;
 
 function renderLessons(container){
-  sk.setTopbar("Lessons", sk.KB.collections.lessons.length+" in the library", "");
+  sk.setTopbar("Train", sk.KB.collections.lessons.length+" lessons in the library", "");
   const f = sk.lessonFilter;
+  const dog = sk.getCurrentDog();
 
   container.innerHTML = `
+    ${dog ? `
+    <button class="row" id="viewSkillsRow" style="margin-bottom:14px;">
+      <div class="row-tab" style="background:var(--forest)"></div>
+      <div class="row-body"><div class="row-title">🎯 ${sk.esc(dog.name)}'s skills</div><div class="row-meta">Track progress across all ${sk.KB.collections.skills.length} tracked skills</div></div>
+      <span class="row-chev">›</span>
+    </button>` : ""}
     <div class="search-input-wrap">
       <span class="sicon">🔍</span>
       <input type="text" id="lessonSearch" placeholder="Search lessons…" value="${sk.esc(f.query)}">
@@ -716,6 +904,8 @@ function renderLessons(container){
     </div>
     <div id="lessonResults"></div>
   `;
+  const viewSkillsRow = container.querySelector("#viewSkillsRow");
+  if(viewSkillsRow) viewSkillsRow.addEventListener("click", ()=>sk.goScreen("skills"));
 
   function applyFilter(){
     let list = sk.KB.collections.lessons;
@@ -908,22 +1098,23 @@ function openLessonDetail(lessonId){
   sk.setTopbar(l.title, l.category, `<button class="icon-btn" id="favBtn" aria-label="${isFav?'Remove from favourites':'Add to favourites'}" style="${isFav?'color:var(--ochre);':''}">${isFav?'★':'☆'}</button><button class="icon-btn" id="backBtn" aria-label="Back">←</button>`);
 
   const container = document.getElementById("screens");
+  const catVar = sk.getCategoryVar(l.category);
+  const catIcon = sk.getCategoryIcon(l.category);
+  const media = renderMediaBlock(l.media);
   container.innerHTML = `<div class="screen active" id="detailScreen">
-    <div class="badge" style="background:var(${sk.getCategoryVar(l.category)});color:#fff;">${sk.getCategoryIcon(l.category)} ${sk.esc(l.category)}</div>
-    <span class="badge badge-outline" style="margin-left:6px;">${sk.esc(l.difficulty)}</span>
-    <span class="badge badge-outline">${sk.esc(l.evidence_level||"")}</span>
-
     ${safetyGateBanners(l.safety_gate_ids)}
 
-    ${renderMediaBlock(l.media)}
+    ${media || `<div class="lesson-hero-fallback" style="background:var(--canvas-raised); border:1px dashed var(--line); color:var(${catVar});">${catIcon}</div>`}
 
-    <p style="margin-top:14px; font-size:15px;">${sk.esc(l.objective)}</p>
-    <p style="color:var(--ink-soft); font-size:13.5px;"><strong>Why it matters:</strong> ${sk.esc(l.why_it_matters)}</p>
+    <p style="font-size:15px;"><strong>Today's goal:</strong> ${sk.esc(l.objective)}</p>
+    <p style="color:var(--ink-soft); font-size:13.5px;">${sk.esc(l.why_it_matters)}</p>
 
-    <div class="stat-grid" style="grid-template-columns:repeat(2,1fr);">
+    <div class="stat-grid">
       <div class="stat-box"><div class="num" style="font-size:16px;">${sk.esc(l.session_length_min)} min</div><div class="lbl">Session length</div></div>
-      <div class="stat-box"><div class="num" style="font-size:16px;">${sk.esc(l.equipment||"None")}</div><div class="lbl">Equipment</div></div>
+      <div class="stat-box"><div class="num" style="font-size:16px;">${sk.esc(l.difficulty)}</div><div class="lbl">Difficulty</div></div>
+      <div class="stat-box"><div class="num" style="font-size:14px;">${sk.esc(l.equipment||"None")}</div><div class="lbl">Equipment</div></div>
     </div>
+    ${l.evidence_level ? `<p style="font-size:11.5px; color:var(--ink-soft); margin-top:-8px;">${sk.esc(l.evidence_level)}</p>` : ""}
 
     ${progress ? `<div class="card" style="background:var(--green-soft); border-color:#b9cca9;">
       <strong>Your progress</strong>
@@ -955,8 +1146,8 @@ function openLessonDetail(lessonId){
     <div class="section-label">Setup</div>
     <p style="font-size:14.5px;">${sk.esc(l.setup)}</p>
 
-    <div class="section-label">Steps</div>
-    <div class="card">${steps.map((s,i)=>`<div class="step-item"><div class="step-num">${i+1}</div><div>${sk.esc(s)}${(l.media&&l.media.steps&&l.media.steps[i])?renderMediaBlock(l.media.steps[i]):""}</div></div>`).join("")}</div>
+    <div class="section-label">How to teach it</div>
+    <div class="card">${steps.map((s,i)=>`<div class="step-item"><div class="step-num-lg" style="background:var(${catVar});">${i+1}</div><div style="padding-top:4px;">${sk.esc(s)}${(l.media&&l.media.steps&&l.media.steps[i])?renderMediaBlock(l.media.steps[i]):""}</div></div>`).join("")}</div>
 
     <div class="section-label">Success criteria</div>
     <p style="font-size:14.5px;">${sk.esc(l.success_criteria)}</p>
@@ -1462,7 +1653,7 @@ function storageEstimateText(){
 }
 
 function renderMore(container){
-  sk.setTopbar("More", "Programmes, safety & data", "");
+  sk.setTopbar("Profile", "Dog, safety & data", "");
   const dog = sk.getCurrentDog();
   const currentTheme = (sk.DB.settings && sk.DB.settings.theme) || "auto";
   container.innerHTML = `
@@ -1485,6 +1676,11 @@ function renderMore(container){
           <div class="row-body"><div class="row-title">${sk.esc(p.name)}</div><div class="row-meta">${p.duration_min} min · ${sk.esc(p.route)}</div></div>
           <span class="row-chev">›</span>
         </button>`).join("")}
+    </div>
+
+    <div class="section-label">Troubleshoot</div>
+    <div class="row-list">
+      <button class="row" id="troubleshootRow"><div class="row-tab" style="background:var(--red)"></div><div class="row-body"><div class="row-title">My dog is...</div><div class="row-meta">Answer a couple of questions to find the right starting point</div></div><span class="row-chev">›</span></button>
     </div>
 
     <div class="section-label">Reference</div>
@@ -1523,8 +1719,14 @@ function renderMore(container){
       <button class="btn btn-secondary btn-block" id="printLogBtn" style="margin-top:8px;">Print / export training log</button>
       <button class="btn btn-danger btn-block" id="resetBtn" style="margin-top:8px;">Reset all data</button>
     </div>
+
+    <div class="section-label">Sidekick</div>
+    <div class="row-list">
+      <button class="row" id="aboutRow"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title">About Sidekick</div><div class="row-meta">Support, other apps, privacy & version</div></div><span class="row-chev">›</span></button>
+    </div>
   `;
 
+  container.querySelector("#aboutRow").addEventListener("click", ()=>sk.goScreen("about"));
   container.querySelectorAll("[data-dog]").forEach(r=>r.addEventListener("click", ()=>{
     const d = sk.DB.dogs.find(x=>x.id===r.dataset.dog);
     sk.renderDogForm(d);
@@ -1534,6 +1736,7 @@ function renderMore(container){
   container.querySelector("#safetyRow").addEventListener("click", openSafetyReference);
   container.querySelector("#mythsRow").addEventListener("click", openMythsReference);
   container.querySelector("#guidanceRow").addEventListener("click", openGuidanceReference);
+  container.querySelector("#troubleshootRow").addEventListener("click", openTroubleshootPicker);
   container.querySelector("#evidenceRow").addEventListener("click", openEvidenceReference);
   container.querySelector("#rulesRow").addEventListener("click", openRulesReference);
   container.querySelector("#protocolsRow").addEventListener("click", openProtocolsReference);
@@ -1627,6 +1830,17 @@ function openProgrammeDetail(id){
   if(btn) btn.addEventListener("click", ()=>{ sk.closeModal(); startProgramme(p.programme_id); });
 }
 
+function programmeDisplayName(prog){
+  return prog.displayName || sk.IDX.programmesById.get(prog.programmeId).name;
+}
+
+function startAdHocSession(name, lessons){
+  if(!lessons.length){ sk.showToast("Nothing to start yet."); return; }
+  sk.setTabbarVisible(false);
+  sk.setActiveProgramme({ programmeId: null, displayName: name, lessons, index:0, blockResults:[] });
+  renderProgrammeBlock();
+}
+
 /* ---------- Programme runner: chains several lessons into one session ---------- */
 function startProgramme(programmeId){
   const p = sk.IDX.programmesById.get(programmeId);
@@ -1640,10 +1854,10 @@ function startProgramme(programmeId){
 
 function renderProgrammeBlock(){
   const prog = sk.activeProgramme;
-  const p = sk.IDX.programmesById.get(prog.programmeId);
+  const pName = programmeDisplayName(prog);
   const l = prog.lessons[prog.index];
   const reps = [];
-  sk.setTopbar(p.name, "Block "+(prog.index+1)+" of "+prog.lessons.length, `<button class="icon-btn" id="endProgBtn" aria-label="End programme">✕</button>`);
+  sk.setTopbar(pName, "Block "+(prog.index+1)+" of "+prog.lessons.length, `<button class="icon-btn" id="endProgBtn" aria-label="End programme">✕</button>`);
   const container = document.getElementById("screens");
   container.innerHTML = `<div class="screen active">
     <div class="progress-track" style="margin-bottom:16px;"><div class="progress-fill" style="width:${(prog.index/prog.lessons.length*100).toFixed(0)}%"></div></div>
@@ -1679,18 +1893,19 @@ function renderProgrammeBlock(){
     }
   });
   document.getElementById("endProgBtn").addEventListener("click", ()=>{
+    const wasAdHoc = !prog.programmeId;
     sk.setActiveProgramme(null);
-    sk.goScreen("more");
+    sk.goScreen(wasAdHoc ? "home" : "more");
   });
 }
 
 function renderProgrammeFeedback(){
   const prog = sk.activeProgramme;
-  const p = sk.IDX.programmesById.get(prog.programmeId);
+  const pName = programmeDisplayName(prog);
   const totalReps = prog.blockResults.reduce((n,b)=>n+b.reps.length,0);
   const totalSucc = prog.blockResults.reduce((n,b)=>n+b.reps.filter(r=>r).length,0);
 
-  sk.setTopbar(p.name, "How did the session go overall?", "");
+  sk.setTopbar(pName, "How did the session go overall?", "");
   const container = document.getElementById("screens");
   container.innerHTML = `<div class="screen active">
     <div class="card" style="text-align:center;">
@@ -1715,7 +1930,7 @@ function renderProgrammeFeedback(){
 
 function saveProgramme(feedback){
   const prog = sk.activeProgramme;
-  const p = sk.IDX.programmesById.get(prog.programmeId);
+  const pName = programmeDisplayName(prog);
   const dog = sk.getCurrentDog();
   const results = prog.blockResults.map(b=>{
     const l = sk.IDX.lessonsById.get(b.lessonId);
@@ -1724,11 +1939,11 @@ function saveProgramme(feedback){
   sk.saveDB();
   sk.setActiveProgramme(null);
 
-  sk.setTopbar("Programme complete", "", "");
+  sk.setTopbar("Session complete", "", "");
   const container = document.getElementById("screens");
   container.innerHTML = `<div class="screen active" style="text-align:center; padding-top:24px;">
     <div style="font-size:44px;">🎉</div>
-    <h2>${sk.esc(p.name)} done!</h2>
+    <h2>${sk.esc(pName)} done!</h2>
     <p style="color:var(--ink-soft);">${sk.esc(dog.name)} worked through ${results.length} block${results.length===1?"":"s"}.</p>
     <div style="text-align:left;">
       ${results.map(({l,result})=>`
@@ -1744,6 +1959,7 @@ function saveProgramme(feedback){
 
 window.__sk.openProgrammeDetail = openProgrammeDetail;
 window.__sk.startProgramme = startProgramme;
+window.__sk.startAdHocSession = startAdHocSession;
 
 function openSafetyReference(){
   const gates = sk.KB.collections.safety_gates;
@@ -1765,6 +1981,69 @@ function openMythsReference(){
     }).join("")}
   `);
 }
+/* ---------- Troubleshooter wizard ---------- */
+function openTroubleshootPicker(){
+  const trees = sk.KB.collections.troubleshooting_trees;
+  sk.openModal(`
+    <h3>My dog is...</h3>
+    <p style="color:var(--ink-soft); font-size:13px; margin-bottom:12px;">Pick what's going on, then answer a couple of quick questions.</p>
+    <div class="row-list">
+      ${trees.map(t=>`
+        <button class="row" data-tree="${t.tree_id}">
+          <div class="row-tab" style="background:var(--red)"></div>
+          <div class="row-body"><div class="row-title">${t.icon} ${sk.esc(t.title)}</div></div>
+          <span class="row-chev">›</span>
+        </button>`).join("")}
+    </div>
+  `);
+  document.querySelectorAll("[data-tree]").forEach(btn=>{
+    btn.addEventListener("click", ()=>runTroubleshootNode(btn.dataset.tree, null));
+  });
+}
+
+function runTroubleshootNode(treeId, nodeId){
+  const tree = sk.KB.collections.troubleshooting_trees.find(t=>t.tree_id===treeId);
+  const currentNodeId = nodeId || tree.start;
+  const node = tree.nodes[currentNodeId];
+
+  if(node.type === "question"){
+    sk.openModal(`
+      <h3>${tree.icon} ${sk.esc(tree.title)}</h3>
+      <p style="font-size:15px; font-weight:600; margin:12px 0;">${sk.esc(node.text)}</p>
+      <div class="row-list">
+        ${node.options.map((opt,i)=>`<button class="row" data-goto="${opt.goto}"><div class="row-body"><div class="row-title">${sk.esc(opt.label)}</div></div><span class="row-chev">›</span></button>`).join("")}
+      </div>
+      <button class="btn btn-ghost btn-block" id="twBack" style="margin-top:12px;">← Choose a different topic</button>
+    `);
+    document.querySelectorAll("[data-goto]").forEach(btn=>{
+      btn.addEventListener("click", ()=>runTroubleshootNode(treeId, btn.dataset.goto));
+    });
+    document.getElementById("twBack").addEventListener("click", openTroubleshootPicker);
+    return;
+  }
+
+  // result node
+  const relatedHtml = (node.related_lessons||[]).map(lid=>{
+    const l = sk.IDX.lessonsById.get(lid);
+    if(!l) return "";
+    return `<button class="row" data-lesson="${lid}"><div class="row-tab" style="background:var(${sk.getCategoryVar(l.category)})"></div><div class="row-body"><div class="row-title">${sk.esc(l.title)}</div><div class="row-meta">${sk.esc(l.category)}</div></div><span class="row-chev">›</span></button>`;
+  }).join("");
+
+  sk.openModal(`
+    <h3>${tree.icon} ${sk.esc(tree.title)}</h3>
+    ${node.professional_help ? `<div class="banner banner-red" style="margin-top:10px;"><span class="glyph">⚠️</span><div>${sk.esc(node.summary)}</div></div>` : `<p style="font-size:14px; color:var(--ink-soft); margin:12px 0;">${sk.esc(node.summary)}</p>`}
+    <div class="section-label">Where to start</div>
+    <div class="row-list">${relatedHtml}</div>
+    <button class="btn btn-ghost btn-block" id="twRestart" style="margin-top:14px;">← Ask about something else</button>
+  `);
+  document.querySelectorAll("[data-lesson]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ sk.closeModal(); sk.openLessonDetail(btn.dataset.lesson); });
+  });
+  document.getElementById("twRestart").addEventListener("click", openTroubleshootPicker);
+}
+
+window.__sk.openTroubleshootPicker = openTroubleshootPicker;
+
 function openGuidanceReference(){
   const items = sk.KB.collections.owner_guidance;
   sk.openModal(`
@@ -1857,9 +2136,40 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.9.0";
 
 const CHANGELOG = [
+  { version: "1.9.0", notes: [
+    "New logo: replaced the circles-forming-a-paw mark with a custom swash \"S\" — updated everywhere it appears (app icon, top bar, About page, favicon)",
+    "New app icon includes a properly safe-zoned version for Android's adaptive icon shapes",
+  ]},
+  { version: "1.8.0", notes: [
+    "Visual refresh: cards now have soft depth and larger, more generous rounded corners; buttons are fully rounded pills with a subtle lift",
+    "Kept the existing colour palette and typography — this was about shape and depth, not a colour change",
+    "Refined the radius scale so buttons, cards, and inputs each read at an appropriately different roundness rather than one size fits all",
+  ]},
+  { version: "1.7.0", notes: [
+    "Add a real photo for your dog — during setup or any time after from Profile → edit dog",
+    "Photos are automatically compressed to keep everything fast and safe for on-device storage (typically under 2KB, compared to a multi-megabyte phone photo)",
+    "Photo appears everywhere your dog's avatar does: Home, top bar, dog switcher, Profile",
+    "An emoji avatar remains as backup if you'd rather not add a photo, or if it fails to load",
+  ]},
+  { version: "1.6.2", notes: [
+    "Redesigned the lesson screen: a clear \"today's goal\" statement, a visual hero panel (even lessons without photos/video yet get a themed placeholder instead of empty space), and bigger, clearer step numbers",
+    "Difficulty now sits alongside time and equipment as a single glanceable row instead of a separate badge",
+  ]},
+  { version: "1.6.1", notes: [
+    "Simplified navigation from 7 tabs to 5: Home, Train, Behaviour, Progress, Profile",
+    "\"Lessons\" renamed to \"Train\" — now includes a prominent link to Skills at the top, not a separate tab",
+    "\"More\" renamed to \"Profile\"; About Sidekick moved inside it rather than its own tab",
+  ]},
+  { version: "1.6.0", notes: [
+    "Home screen rebuilt around your dog: photo/avatar, name, and a real 3-exercise \"today's session\" instead of a single suggestion",
+    "New: interactive troubleshooting wizard — pick a problem, answer 1-2 questions, get a diagnosis and starting lessons",
+    "\"Help with a behaviour\" and \"What should I train?\" quick actions on Home",
+    "Progress-by-category preview on Home, not just raw counts",
+    "Session recommendations no longer include reference/assessment lessons (only real hands-on exercises)",
+  ]},
   { version: "1.5.0", notes: [
     "Modal dialogs now support screen readers and keyboard navigation (focus trap, Escape to close)",
     "Added Apple PWA meta tags for a cleaner install on iOS",
@@ -1909,11 +2219,8 @@ const CHANGELOG = [
 function pawLogoSVG(size){
   return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" aria-hidden="true">
     <circle cx="50" cy="50" r="50" fill="var(--forest)"/>
-    <circle cx="50" cy="60" r="19" fill="var(--canvas)"/>
-    <circle cx="27" cy="38" r="9.5" fill="var(--canvas)"/>
-    <circle cx="41" cy="24" r="10" fill="var(--canvas)"/>
-    <circle cx="59" cy="24" r="10" fill="var(--canvas)"/>
-    <circle cx="73" cy="38" r="9.5" fill="var(--canvas)"/>
+    <path d="M 66 33 C 66 22 34 22 34 38 C 34 54 66 46 66 62 C 66 78 34 78 34 67"
+          stroke="var(--canvas)" stroke-width="11" fill="none" stroke-linecap="round"/>
   </svg>`;
 }
 
@@ -2094,6 +2401,23 @@ function runDataIntegrityCheck(){
   });
   KB.collections.skills.forEach(s=>{
     if(!sk.findMatchingLesson(s.skill_id)) warnings.push(`Skill ${s.skill_id} (${s.skill_name}) has no linked lesson`);
+  });
+
+  (KB.collections.troubleshooting_trees||[]).forEach(tree=>{
+    if(!tree.nodes[tree.start]) errors.push(`Troubleshoot tree ${tree.tree_id}: missing start node "${tree.start}"`);
+    Object.entries(tree.nodes).forEach(([nodeId, node])=>{
+      if(node.type === "question"){
+        (node.options||[]).forEach(opt=>{
+          if(!tree.nodes[opt.goto]) errors.push(`Troubleshoot tree ${tree.tree_id}/${nodeId}: broken link to "${opt.goto}"`);
+        });
+      } else if(node.type === "result"){
+        (node.related_lessons||[]).forEach(lid=>{
+          if(!IDX.lessonsById.has(lid)) errors.push(`Troubleshoot tree ${tree.tree_id}/${nodeId}: related lesson "${lid}" doesn't exist`);
+        });
+      } else {
+        errors.push(`Troubleshoot tree ${tree.tree_id}/${nodeId}: unknown node type "${node.type}"`);
+      }
+    });
   });
 
   return { errors, warnings };

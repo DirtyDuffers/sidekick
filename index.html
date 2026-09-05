@@ -63,9 +63,10 @@
   --cat-trouble:  #8C3E5A;
   --cat-mouth:    #9C4F63;
 
-  --radius-s: 3px;
-  --radius-m: 6px;
-  --shadow-card: 0 1px 0 var(--line);
+  --radius-s: 12px;
+  --radius-m: 18px;
+  --radius-pill: 999px;
+  --shadow-card: 0 2px 10px rgba(30,42,31,0.07), 0 1px 2px rgba(30,42,31,0.04);
 
   --font-display: 'Space Grotesk', -apple-system, sans-serif;
   --font-body: 'Inter', -apple-system, sans-serif;
@@ -86,6 +87,7 @@ body[data-theme="dark"]{
   --line:         #384034;
   --forest:       #4C8058;
   --forest-dark:  #3A6644;
+  --shadow-card:  0 2px 10px rgba(0,0,0,0.28), 0 1px 2px rgba(0,0,0,0.2);
 }
 @media (prefers-color-scheme: dark){
   body[data-theme="auto"]{
@@ -96,6 +98,7 @@ body[data-theme="dark"]{
     --line:         #384034;
     --forest:       #4C8058;
     --forest-dark:  #3A6644;
+    --shadow-card:  0 2px 10px rgba(0,0,0,0.28), 0 1px 2px rgba(0,0,0,0.2);
   }
 }
 
@@ -181,25 +184,26 @@ button{font-family:inherit;}
 /* ---------- Buttons ---------- */
 .btn{
   display:inline-flex; align-items:center; justify-content:center; gap:6px;
-  padding:12px 18px; border-radius:var(--radius-m); border:1px solid transparent;
+  padding:13px 22px; border-radius:var(--radius-pill); border:1px solid transparent;
   font-family:var(--font-body); font-weight:600; font-size:15px; cursor:pointer;
   text-decoration:none;
 }
-.btn-primary{background:var(--forest); color:#fff;}
-.btn-primary:active{background:var(--forest-dark);}
+.btn-primary{background:var(--forest); color:#fff; box-shadow:0 2px 8px rgba(47,82,51,0.25);}
+.btn-primary:active{background:var(--forest-dark); box-shadow:none;}
 .btn-secondary{background:transparent; color:var(--forest); border-color:var(--forest);}
 .btn-ghost{background:transparent; color:var(--ink-soft); border-color:var(--line);}
 .btn-danger{background:transparent; color:var(--red); border-color:var(--red);}
 .btn-block{width:100%;}
-.btn-sm{padding:8px 12px; font-size:13px;}
-.btn:disabled{opacity:0.4; cursor:default;}
+.btn-sm{padding:9px 16px; font-size:13px;}
+.btn:disabled{opacity:0.4; cursor:default; box-shadow:none;}
 
 /* ---------- Cards & list rows (field-guide index, not SaaS cards) ---------- */
 .card{
   background:var(--canvas-raised);
   border:1px solid var(--line);
   border-radius:var(--radius-m);
-  padding:16px;
+  box-shadow:var(--shadow-card);
+  padding:18px;
   margin-bottom:12px;
 }
 .row-list{border-top:1px solid var(--line);}
@@ -219,7 +223,7 @@ button{font-family:inherit;}
 
 .badge{
   display:inline-flex; align-items:center; gap:3px;
-  font-size:11px; font-weight:600; padding:2px 7px; border-radius:20px;
+  font-size:11px; font-weight:600; padding:2px 7px; border-radius:var(--radius-pill);
   background:var(--ochre-soft); color:var(--forest-dark); white-space:nowrap;
 }
 .badge-red{background:var(--red-soft); color:var(--red);}
@@ -239,7 +243,7 @@ button{font-family:inherit;}
 /* ---------- Forms ---------- */
 label{display:block; font-size:13px; font-weight:600; margin-bottom:6px; color:var(--ink-soft);}
 input[type=text],input[type=number],select,textarea{
-  width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:var(--radius-m);
+  width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:var(--radius-s);
   font-family:inherit; font-size:15px; background:var(--canvas-raised); color:var(--ink);
   margin-bottom:14px;
 }
@@ -248,7 +252,7 @@ textarea{resize:vertical; min-height:70px;}
 .field-row > *{flex:1;}
 .chip-group{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;}
 .chip{
-  padding:8px 14px; border-radius:20px; border:1px solid var(--line); background:var(--canvas-raised);
+  padding:8px 14px; border-radius:var(--radius-pill); border:1px solid var(--line); background:var(--canvas-raised);
   font-size:13.5px; font-weight:600; cursor:pointer; color:var(--ink-soft);
 }
 .chip.selected{background:var(--forest); border-color:var(--forest); color:#fff;}
@@ -257,7 +261,7 @@ textarea{resize:vertical; min-height:70px;}
 .divider{height:1px; background:var(--line); margin:16px 0; border:none;}
 .hairline-top{border-top:1px solid var(--line);}
 .stat-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px;}
-.stat-box{background:var(--canvas-raised); border:1px solid var(--line); border-radius:var(--radius-m); padding:12px 10px; text-align:center;}
+.stat-box{background:var(--canvas-raised); border:1px solid var(--line); border-radius:var(--radius-m); box-shadow:var(--shadow-card); padding:14px 10px; text-align:center;}
 .stat-box .num{font-family:var(--font-display); font-size:22px; font-weight:700; color:var(--forest);}
 .stat-box .lbl{font-size:11px; color:var(--ink-soft); margin-top:2px;}
 
@@ -304,6 +308,15 @@ textarea{resize:vertical; min-height:70px;}
   width:24px; height:24px; border-radius:50%; background:var(--forest); color:#fff;
   font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:none; margin-top:1px;
 }
+.step-num-lg{
+  width:30px; height:30px; border-radius:50%; color:#fff;
+  font-size:14px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:none;
+  font-family:var(--font-display);
+}
+.lesson-hero-fallback{
+  width:100%; aspect-ratio:16/9; border-radius:var(--radius-m); margin-bottom:14px;
+  display:flex; align-items:center; justify-content:center; font-size:52px;
+}
 .checklist-item{display:flex; align-items:center; gap:8px; padding:5px 0; font-size:14px; color:var(--ink-soft);}
 .checklist-item .dot{width:5px; height:5px; border-radius:50%; background:var(--ink-soft); flex:none;}
 
@@ -312,7 +325,7 @@ textarea{resize:vertical; min-height:70px;}
 .search-input-wrap .sicon{position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--ink-soft);}
 
 .link-pill{
-  display:inline-block; padding:6px 12px; border:1px solid var(--line); border-radius:20px;
+  display:inline-block; padding:6px 12px; border:1px solid var(--line); border-radius:var(--radius-pill);
   font-size:12.5px; margin:0 6px 6px 0; cursor:pointer; color:var(--forest-dark); background:var(--canvas-raised);
 }
 
@@ -357,11 +370,8 @@ textarea{resize:vertical; min-height:70px;}
     <button class="topbar-logo" id="topbarLogo" aria-label="Sidekick home" title="Home">
       <svg viewBox="0 0 100 100" width="30" height="30" aria-hidden="true">
         <circle cx="50" cy="50" r="50" fill="var(--forest)"/>
-        <circle cx="50" cy="60" r="19" fill="var(--canvas)"/>
-        <circle cx="27" cy="38" r="9.5" fill="var(--canvas)"/>
-        <circle cx="41" cy="24" r="10" fill="var(--canvas)"/>
-        <circle cx="59" cy="24" r="10" fill="var(--canvas)"/>
-        <circle cx="73" cy="38" r="9.5" fill="var(--canvas)"/>
+        <path d="M 66 33 C 66 22 34 22 34 38 C 34 54 66 46 66 62 C 66 78 34 78 34 67"
+              stroke="var(--canvas)" stroke-width="11" fill="none" stroke-linecap="round"/>
       </svg>
     </button>
     <div style="flex:1; min-width:0;">
@@ -377,12 +387,10 @@ textarea{resize:vertical; min-height:70px;}
   <!-- ===================== TAB BAR ===================== -->
   <div class="tabbar" id="tabbar">
     <button class="tab active" data-screen="home"><span class="tab-icon">🏡</span>Home</button>
-    <button class="tab" data-screen="lessons"><span class="tab-icon">📖</span>Lessons</button>
+    <button class="tab" data-screen="lessons"><span class="tab-icon">📖</span>Train</button>
     <button class="tab" data-screen="behaviours"><span class="tab-icon">🧭</span>Behaviour</button>
-    <button class="tab" data-screen="skills"><span class="tab-icon">🎯</span>Skills</button>
-    <button class="tab" data-screen="more"><span class="tab-icon">☰</span>More</button>
     <button class="tab" data-screen="progress"><span class="tab-icon">📈</span>Progress</button>
-    <button class="tab" data-screen="about"><span class="tab-icon">ℹ️</span>About</button>
+    <button class="tab" data-screen="more"><span class="tab-icon">👤</span>Profile</button>
   </div>
 
   <div class="modal-overlay" id="modalOverlay">
