@@ -1138,6 +1138,31 @@ const CONCEPT_DIAGRAMS = {
     { label:"Reward calm", svg:'<path d="M12 21c-4-3-8-6.5-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 4.5-4 8-8 11z"/>' },
     { label:"Longer, calmer", svg:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>' },
   ],
+  "lure-fade": [
+    { label:"Lure with a treat", svg:'<path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12"/><path d="M11 12V4.5a1.5 1.5 0 0 1 3 0V12"/><path d="M14 12V6.5a1.5 1.5 0 0 1 3 0V13"/><path d="M17 13v-2a1.5 1.5 0 0 1 3 0v5a5 5 0 0 1-5 5h-2a5 5 0 0 1-4-2l-2.5-3.5a1.5 1.5 0 0 1 2.3-1.9L10 15"/><circle cx="13" cy="9" r="1.6" fill="currentColor" stroke="none"/>' },
+    { label:"Dog moves into position", svg:'<path d="M5 13l4 4L19 7"/>' },
+    { label:"Fade to signal only", svg:'<path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12"/><path d="M11 12V4.5a1.5 1.5 0 0 1 3 0V12"/><path d="M14 12V6.5a1.5 1.5 0 0 1 3 0V13"/><path d="M17 13v-2a1.5 1.5 0 0 1 3 0v5a5 5 0 0 1-5 5h-2a5 5 0 0 1-4-2l-2.5-3.5a1.5 1.5 0 0 1 2.3-1.9L10 15"/>' },
+  ],
+  "recall": [
+    { label:"Call your dog", svg:'<path d="M3 10v4a1 1 0 0 0 1 1h3l4 4V5L7 9H4a1 1 0 0 0-1 1z"/><path d="M16 9a3 3 0 0 1 0 6M19 6a7 7 0 0 1 0 12"/>' },
+    { label:"Dog runs to you", svg:'<path d="M4 12h11M11 8l4 4-4 4"/><circle cx="19" cy="12" r="2"/>' },
+    { label:"Big reward!", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
+  ],
+  "leave-it": [
+    { label:"Dog sees temptation", svg:'<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.5"/>' },
+    { label:"Chooses to leave it", svg:'<path d="M5 13l4 4L19 7"/>' },
+    { label:"Reward the choice", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
+  ],
+  "hand-target": [
+    { label:"Offer your palm", svg:'<path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12"/><path d="M11 12V4.5a1.5 1.5 0 0 1 3 0V12"/><path d="M14 12V6.5a1.5 1.5 0 0 1 3 0V13"/><path d="M17 13v-2a1.5 1.5 0 0 1 3 0v5a5 5 0 0 1-5 5h-2a5 5 0 0 1-4-2l-2.5-3.5a1.5 1.5 0 0 1 2.3-1.9L10 15"/>' },
+    { label:"Nose meets hand", svg:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.8" fill="currentColor" stroke="none"/>' },
+    { label:"Mark and reward", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
+  ],
+  "loose-lead": [
+    { label:"Lead stays slack", svg:'<path d="M3 12c3-4 6 4 9 0s6-4 9 0"/>' },
+    { label:"Dog stays close", svg:'<circle cx="7" cy="14" r="3"/><path d="M13 14h3"/><circle cx="19" cy="14" r="1.8"/>' },
+    { label:"Reward the position", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
+  ],
 };
 function conceptDiagramHTML(type){
   const beats = CONCEPT_DIAGRAMS[type];
@@ -1155,9 +1180,18 @@ const LESSON_DIAGRAM = {
   "COM-016":"marker-timing", "TROUBLE-011":"marker-timing",
   "SKL-022":"trade", "RG-005":"trade", "RG-006":"trade", "HOME-026":"trade", "CHEW-005":"trade",
   "CALM-001":"settle", "CALM-003":"settle", "SKL-029":"settle", "CALM-020":"settle",
+  "SKL-001":"lure-fade", "SKL-002":"lure-fade", "SKL-003":"lure-fade", "SKL-006":"lure-fade",
+  "SKL-007":"lure-fade", "SKL-008":"lure-fade", "SKL-010":"lure-fade", "FND-007":"lure-fade",
+  "REC-001":"recall", "REC-002":"recall", "REC-003":"recall", "REC-004":"recall",
+  "REC-005":"recall", "REC-009":"recall", "REC-012":"recall", "REC-013":"recall",
+  "SKL-025":"leave-it", "SKL-026":"leave-it", "SKL-027":"leave-it", "SKL-028":"leave-it",
+  "COM-005":"hand-target", "COM-006":"hand-target", "COM-007":"hand-target", "TRK-001":"hand-target",
+  "WAL-003":"loose-lead", "WAL-004":"loose-lead", "WAL-014":"loose-lead",
+  "WAL-015":"loose-lead", "WAL-016":"loose-lead",
 };
 
 function openLessonDetail(lessonId){
+  window.scrollTo(0,0);
   const l = sk.IDX.lessonsById.get(lessonId);
   if(!l) return;
   sk.setTabbarVisible(true); // detail views are read-only — safe to tab away anytime
@@ -1595,6 +1629,7 @@ function renderBehaviours(container){
 }
 
 function openBehaviourDetail(id){
+  window.scrollTo(0,0);
   const b = sk.IDX.behavioursById.get(id);
   if(!b) return;
   sk.setTabbarVisible(true); // read-only detail view
@@ -1749,6 +1784,7 @@ function renderSkills(container){
 }
 
 function openSkillDetail(skillId){
+  window.scrollTo(0,0);
   const s = sk.IDX.skillsById.get(skillId);
   const dog = sk.getCurrentDog();
   const state = sk.dogSkillState(dog.id, skillId);
@@ -1941,6 +1977,7 @@ function programmeLessonList(programme, dog){
 }
 
 function openProgrammeDetail(id){
+  window.scrollTo(0,0);
   const p = sk.IDX.programmesById.get(id);
   const dog = sk.getCurrentDog();
   const steps = p.route.split("→").map(s=>s.trim());
@@ -2276,9 +2313,19 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "2.1.0";
+const APP_VERSION = "2.3.0";
 
 const CHANGELOG = [
+  { version: "2.3.0", notes: [
+    "Full audit of safety warnings across every category — found the same blanket category-level tagging pattern in Assessment, Barking, Behaviour Assessment, Chasing, Handling & Cooperative Care, Reactivity, and Socialisation (following on from the Chewing/Resource Guarding/Recall fixes in the last update)",
+    "Over 300 incorrect or disproportionate warnings removed across 556 lessons; genuine gaps filled in too (e.g. Muzzle training previously had no safety note at all)",
+    "Warnings now reflect what each specific lesson actually involves, not just what category it happens to sit in",
+  ]},
+  { version: "2.2.0", notes: [
+    "5 more animated concept diagrams: lure-fade, recall, leave it, hand target, loose-lead walking — now 8 total, covering 43 lessons",
+    "Fixed: navigating between lesson/behaviour/skill/programme detail pages no longer leaves you scrolled partway down — now always starts at the top",
+    "Fixed incorrect safety warnings on Chewing & Destruction, Resource Guarding, and Recall lessons — several benign lessons (e.g. \"Trading for a household object\") were showing severe warnings that had been blanket-applied to an entire category rather than reflecting that lesson's actual content; also added a genuinely missing warning to \"Recall away from wildlife\"",
+  ]},
   { version: "2.1.0", notes: [
     "New: animated concept diagrams for lessons that teach a specific mechanic (marker timing, trading, settling) — a real illustration instead of a placeholder icon, with a static fallback for reduced-motion settings",
     "Reduced card overuse on the lesson and session screens — mistakes and reminders are now clean typography, not cards inside cards",
