@@ -140,7 +140,7 @@ button{font-family:inherit;}
   position:sticky; top:0; z-index:20;
   background:var(--canvas);
   border-bottom:1px solid var(--line);
-  padding:14px 20px 12px;
+  padding:calc(14px + env(safe-area-inset-top)) 20px 12px;
   display:flex; align-items:center; justify-content:space-between;
   gap:12px;
 }

@@ -2136,9 +2136,18 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "1.9.0";
+const APP_VERSION = "1.9.2";
 
 const CHANGELOG = [
+  { version: "1.9.2", notes: [
+    "Fixed: the top bar overlapped the iPhone status bar when launched from the home screen — now respects the safe area",
+    "Updated the About page's content note — the old wording defensively explained Woofz's role, which no longer reflects how diverse the content actually is; it now credits the real sources (Dogs Trust, RSPCA, Blue Cross, Battersea, ABTC, AVSAB) directly",
+    "Updated the content status message to reflect reality: all 556 lessons now have individually written, sourced content, with a note that safety-critical guidance still benefits from professional review",
+  ]},
+  { version: "1.9.1", notes: [
+    "Full project audit: extended the data integrity checker to also validate source references on myths, owner guidance, and evidence cards (previously only lessons were checked)",
+    "No user-facing issues found in the audit — this was a defensive improvement for future edits",
+  ]},
   { version: "1.9.0", notes: [
     "New logo: replaced the circles-forming-a-paw mark with a custom swash \"S\" — updated everywhere it appears (app icon, top bar, About page, favicon)",
     "New app icon includes a properly safe-zoned version for Android's adaptive icon shapes",
@@ -2239,7 +2248,7 @@ function sourceOrgSummary(){
 
 function renderAbout(container){
   const kb = sk.KB;
-  const reviewStatus = kb.collections.lessons[0] && kb.collections.lessons[0].review_status;
+  const reviewStatus = kb.content_review_status;
   container.innerHTML = `
     <div class="about-hero" style="text-align:center; margin-bottom:18px;">
       ${pawLogoSVG(72)}
@@ -2402,6 +2411,25 @@ function runDataIntegrityCheck(){
   KB.collections.skills.forEach(s=>{
     if(!sk.findMatchingLesson(s.skill_id)) warnings.push(`Skill ${s.skill_id} (${s.skill_name}) has no linked lesson`);
   });
+
+  // Source references on the reference collections (myths, owner guidance,
+  // evidence cards) weren't checked before — only lessons were. Added after
+  // noticing the gap during a full project audit.
+  const checkSources = (list, idField, label)=>{
+    list.forEach(item=>{
+      const raw = item.source_ids || "";
+      const ids = raw.split(/[|;]/).map(s=>s.trim()).filter(Boolean);
+      ids.forEach(sid=>{
+        if(!IDX.sourcesById.has(sid)) warnings.push(`${label} ${item[idField]}: source "${sid}" doesn't exist`);
+      });
+    });
+  };
+  checkSources(KB.collections.myths, "myth_id", "Myth");
+  checkSources(KB.collections.owner_guidance, "guidance_id", "Owner guidance");
+  if(KB.collections.evidence_cards.length){
+    const evidenceIdField = Object.keys(KB.collections.evidence_cards[0]).find(k=>k.endsWith("_id")) || "topic";
+    checkSources(KB.collections.evidence_cards, evidenceIdField, "Evidence card");
+  }
 
   (KB.collections.troubleshooting_trees||[]).forEach(tree=>{
     if(!tree.nodes[tree.start]) errors.push(`Troubleshoot tree ${tree.tree_id}: missing start node "${tree.start}"`);
