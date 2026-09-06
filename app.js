@@ -1163,6 +1163,86 @@ const CONCEPT_DIAGRAMS = {
     { label:"Dog stays close", svg:'<circle cx="7" cy="14" r="3"/><path d="M13 14h3"/><circle cx="19" cy="14" r="1.8"/>' },
     { label:"Reward the position", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
   ],
+  "four-paws": [
+    { label:"Dog wants to jump", svg:'<path d="M12 19V9M8 13l4-4 4 4"/><path d="M5 5l1.5 1.5M19 5l-1.5 1.5"/>' },
+    { label:"Four paws stay down", svg:'<path d="M5 13l4 4L19 7"/>' },
+    { label:"Reward calm greeting", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
+  ],
+  "chin-rest": [
+    { label:"Offer open palm", svg:'<path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12"/><path d="M11 12V4.5a1.5 1.5 0 0 1 3 0V12"/><path d="M14 12V6.5a1.5 1.5 0 0 1 3 0V13"/><path d="M17 13v-2a1.5 1.5 0 0 1 3 0v5a5 5 0 0 1-5 5h-2a5 5 0 0 1-4-2l-2.5-3.5a1.5 1.5 0 0 1 2.3-1.9L10 15"/>' },
+    { label:"Chin rests on palm", svg:'<path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12"/><path d="M11 12V4.5a1.5 1.5 0 0 1 3 0V12"/><path d="M14 12V6.5a1.5 1.5 0 0 1 3 0V13"/><path d="M17 13v-2a1.5 1.5 0 0 1 3 0v5a5 5 0 0 1-5 5h-2a5 5 0 0 1-4-2l-2.5-3.5a1.5 1.5 0 0 1 2.3-1.9L10 15"/><circle cx="10" cy="7" r="2.6" fill="currentColor" stroke="none"/>' },
+    { label:"Free to lift away", svg:'<path d="M12 20V8M7 12l5-5 5 5"/>' },
+  ],
+  "wait-release": [
+    { label:"Cue wait", svg:'<rect x="4" y="4" width="7" height="16" rx="1.5"/><rect x="13" y="4" width="7" height="16" rx="1.5"/>' },
+    { label:"Holds position", svg:'<path d="M5 13l4 4L19 7"/>' },
+    { label:"Release word = go", svg:'<path d="M5 12h11M12 7l5 5-5 5"/>' },
+  ],
+  "capturing": [
+    { label:"Watch for it", svg:'<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.5"/>' },
+    { label:"It happens naturally", svg:'<path d="M12 2l2.4 7.2H22l-6 4.4 2.3 7.2-6.3-4.6-6.3 4.6 2.3-7.2-6-4.4h7.6z"/>' },
+    { label:"Mark and reward", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
+  ],
+  "threshold-distance": [
+    { label:"Calm at a distance", svg:'<circle cx="4" cy="12" r="2.2"/><circle cx="20" cy="12" r="2.2"/><path d="M8 12h8" stroke-dasharray="2 2"/>' },
+    { label:"Notice tension rising", svg:'<circle cx="7" cy="12" r="2.2"/><circle cx="17" cy="12" r="2.2"/><path d="M11 12h2" stroke-dasharray="2 2"/><path d="M12 5v2M12 3.5h.01"/>' },
+    { label:"Reward before reacting", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
+  ],
+  "redirect-chew": [
+    { label:"Wrong item", svg:'<path d="M6 4c-1 3-1 13 0 16M18 4c1 3 1 13 0 16"/><circle cx="12" cy="12" r="9.5"/><path d="M6.5 6.5l11 11"/>' },
+    { label:"Redirect to chew", svg:'<path d="M5 12h9M10 7l4 5-4 5"/><ellipse cx="20" cy="12" rx="2.5" ry="4"/>' },
+    { label:"Reward the choice", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
+  ],
+  "pairing": [
+    { label:"New thing appears", svg:'<circle cx="12" cy="12" r="8"/><path d="M12 5v2M12 3.5h.01"/>' },
+    { label:"Pair with something good", svg:'<circle cx="6" cy="12" r="3.2"/><path d="M13 12h2"/><path d="M19 9v6"/><path d="M17 12h4"/>' },
+    { label:"Builds good feelings", svg:'<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/>' },
+  ],
+  "shaping": [
+    { label:"Dog tries something", svg:'<circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>' },
+    { label:"Closer attempts rewarded", svg:'<path d="M4 20v-4h4v-4h4V8h4V4"/>' },
+    { label:"Full behaviour achieved", svg:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.8" fill="currentColor" stroke="none"/>' },
+  ],
+  "emergency-turn": [
+    { label:"Notice trigger appear", svg:'<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.5"/>' },
+    { label:"Cue turn-away", svg:'<path d="M4 6v6a4 4 0 0 0 4 4h10M14 12l4 4-4 4"/>' },
+    { label:"Calmly move away", svg:'<circle cx="16" cy="12" r="2.2"/><path d="M11 12H8" stroke-dasharray="2 2"/><path d="M3 8l3 4-3 4"/>' },
+  ],
+  "name-response": [
+    { label:"Say name", svg:'<path d="M3 10v4a1 1 0 0 0 1 1h3l4 4V5L7 9H4a1 1 0 0 0-1 1z"/><path d="M16 9a3 3 0 0 1 0 6M19 6a7 7 0 0 1 0 12"/>' },
+    { label:"Dog looks at you", svg:'<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/><path d="M8 15c1.2 1 2.6 1.5 4 1.5s2.8-.5 4-1.5"/>' },
+    { label:"Reward attention", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
+  ],
+  "alone-time": [
+    { label:"Step away", svg:'<path d="M15 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3"/><path d="M15 3v18"/><path d="M11 12h4"/><circle cx="10.5" cy="12" r="0.6" fill="currentColor" stroke="none"/>' },
+    { label:"Dog settles", svg:'<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/><path d="M8 15c1.2 1 2.6 1.5 4 1.5s2.8-.5 4-1.5"/>' },
+    { label:"Return calmly", svg:'<path d="M5 13l4 4L19 7"/>' },
+  ],
+  "scent-search": [
+    { label:"Scatter treats", svg:'<circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none"/><circle cx="7" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="17" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="9" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"/>' },
+    { label:"Dog sniffs and searches", svg:'<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L20 20"/>' },
+    { label:"Finds and enjoys", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
+  ],
+  "touch-acceptance": [
+    { label:"Touch happens", svg:'<path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12"/><path d="M11 12V4.5a1.5 1.5 0 0 1 3 0V12"/><path d="M14 12V6.5a1.5 1.5 0 0 1 3 0V13"/><path d="M17 13v-2a1.5 1.5 0 0 1 3 0v5a5 5 0 0 1-5 5h-2a5 5 0 0 1-4-2l-2.5-3.5a1.5 1.5 0 0 1 2.3-1.9L10 15"/>' },
+    { label:"Dog stays relaxed", svg:'<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/><path d="M8 15c1.2 1 2.6 1.5 4 1.5s2.8-.5 4-1.5"/>' },
+    { label:"Reward calm", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
+  ],
+  "equipment-intro": [
+    { label:"See equipment calmly", svg:'<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.5"/>' },
+    { label:"Calm approach", svg:'<path d="M5 13l4 4L19 7"/>' },
+    { label:"Reward", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
+  ],
+  "toilet-training": [
+    { label:"Take outside on schedule", svg:'<path d="M15 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3"/><path d="M15 3v18"/><path d="M11 12h4"/><circle cx="10.5" cy="12" r="0.6" fill="currentColor" stroke="none"/>' },
+    { label:"Dog toilets outside", svg:'<path d="M5 13l4 4L19 7"/>' },
+    { label:"Reward immediately", svg:'<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/><circle cx="12" cy="12" r="3"/>' },
+  ],
+  "retrieve": [
+    { label:"Throw it", svg:'<path d="M4 18c4-8 12-8 16-14" stroke-dasharray="2 2.5"/><circle cx="20" cy="4" r="2" fill="currentColor" stroke="none"/>' },
+    { label:"Dog picks it up", svg:'<circle cx="12" cy="12" r="9"/><path d="M9 12h2M13 12h2"/><circle cx="16" cy="12" r="1.4" fill="currentColor" stroke="none"/>' },
+    { label:"Brings it back", svg:'<path d="M20 12H9M13 8l-4 4 4 4"/>' },
+  ],
 };
 function conceptDiagramHTML(type){
   const beats = CONCEPT_DIAGRAMS[type];
@@ -1178,16 +1258,127 @@ function conceptDiagramHTML(type){
 const LESSON_DIAGRAM = {
   "FND-002":"marker-timing", "FND-003":"marker-timing", "COM-015":"marker-timing",
   "COM-016":"marker-timing", "TROUBLE-011":"marker-timing",
-  "SKL-022":"trade", "RG-005":"trade", "RG-006":"trade", "HOME-026":"trade", "CHEW-005":"trade",
-  "CALM-001":"settle", "CALM-003":"settle", "SKL-029":"settle", "CALM-020":"settle",
-  "SKL-001":"lure-fade", "SKL-002":"lure-fade", "SKL-003":"lure-fade", "SKL-006":"lure-fade",
-  "SKL-007":"lure-fade", "SKL-008":"lure-fade", "SKL-010":"lure-fade", "FND-007":"lure-fade",
-  "REC-001":"recall", "REC-002":"recall", "REC-003":"recall", "REC-004":"recall",
-  "REC-005":"recall", "REC-009":"recall", "REC-012":"recall", "REC-013":"recall",
+  "SKL-022":"trade", "SKL-023":"trade", "SKL-024":"trade", "RG-005":"trade", "RG-006":"trade", "HOME-026":"trade", "CHEW-005":"trade",
+  "CALM-001":"settle", "CALM-003":"settle", "SKL-029":"settle", "SKL-030":"settle", "SKL-031":"settle", "SKL-032":"settle", "CALM-020":"settle",
+  "SKL-001":"lure-fade", "SKL-002":"lure-fade", "SKL-003":"lure-fade", "SKL-004":"lure-fade",
+  "SKL-005":"lure-fade", "SKL-006":"lure-fade", "SKL-007":"lure-fade", "SKL-008":"lure-fade",
+  "SKL-009":"lure-fade", "SKL-010":"lure-fade", "SKL-011":"lure-fade", "FND-007":"lure-fade",
+  "REC-001":"recall", "REC-003":"recall", "REC-004":"recall",
+  "REC-005":"recall", "REC-006":"recall", "REC-007":"recall", "REC-008":"recall",
+  "REC-009":"recall", "REC-010":"recall", "REC-011":"recall", "REC-012":"recall", "REC-013":"recall",
+  "REC-014":"recall", "REC-015":"recall", "REC-016":"recall", "REC-018":"recall", "REC-019":"recall",
+  "REC-020":"recall", "REC-021":"recall", "REC-022":"recall", "REC-023":"recall", "REC-024":"recall",
+  "REC-025":"recall", "REC-026":"recall", "REC-027":"recall", "REC-028":"recall",
   "SKL-025":"leave-it", "SKL-026":"leave-it", "SKL-027":"leave-it", "SKL-028":"leave-it",
   "COM-005":"hand-target", "COM-006":"hand-target", "COM-007":"hand-target", "TRK-001":"hand-target",
-  "WAL-003":"loose-lead", "WAL-004":"loose-lead", "WAL-014":"loose-lead",
-  "WAL-015":"loose-lead", "WAL-016":"loose-lead",
+  "WAL-003":"loose-lead", "WAL-004":"loose-lead", "WAL-005":"loose-lead", "WAL-007":"loose-lead",
+  "WAL-013":"loose-lead", "WAL-014":"loose-lead", "WAL-015":"loose-lead", "WAL-016":"loose-lead",
+  "WAL-018":"loose-lead", "WAL-019":"loose-lead", "WAL-022":"loose-lead", "WAL-023":"loose-lead",
+  "WAL-024":"loose-lead", "WAL-025":"loose-lead", "WAL-026":"loose-lead", "WAL-027":"loose-lead",
+  "WAL-028":"loose-lead", "WAL-029":"loose-lead", "WAL-030":"loose-lead", "WAL-031":"loose-lead",
+  "WAL-032":"loose-lead",
+  "LIFE-001":"four-paws", "LIFE-002":"four-paws", "LIFE-003":"four-paws", "HOME-012":"four-paws",
+  "SKL-012":"four-paws",
+  "SKL-013":"wait-release", "SKL-014":"wait-release", "SKL-015":"wait-release",
+  "SKL-016":"wait-release", "SKL-017":"wait-release", "SKL-018":"wait-release",
+  "SKL-019":"wait-release", "SKL-020":"wait-release", "SKL-021":"wait-release",
+  "LIFE-004":"wait-release", "LIFE-005":"wait-release",
+  "CARE-014":"chin-rest", "CARE-015":"chin-rest", "CARE-016":"chin-rest",
+  "FND-006":"capturing", "CALM-002":"capturing",
+  "REACT-004":"threshold-distance", "REACT-010":"threshold-distance", "REACT-013":"threshold-distance",
+  "REACT-014":"threshold-distance", "REACT-015":"threshold-distance", "OWN-002":"threshold-distance",
+  "CHEW-006":"redirect-chew", "HOME-018":"redirect-chew", "LIFE-017":"redirect-chew",
+  "SOC-008":"pairing", "SOC-009":"pairing", "SOC-010":"pairing",
+  "ENR-011":"shaping", "FND-008":"shaping", "FND-009":"shaping",
+  "REACT-006":"emergency-turn", "REACT-007":"emergency-turn", "WAL-008":"emergency-turn",
+  "WAL-009":"emergency-turn", "WAL-010":"emergency-turn", "WAL-011":"emergency-turn", "WAL-012":"emergency-turn",
+  "COM-001":"name-response", "COM-002":"name-response", "COM-009":"name-response",
+  "LIFE-006":"wait-release", "LIFE-008":"wait-release", "LIFE-021":"wait-release",
+  "LIFE-022":"wait-release", "LIFE-023":"wait-release", "LIFE-033":"wait-release", "LIFE-034":"wait-release",
+  "LIFE-007":"settle", "LIFE-009":"settle", "LIFE-010":"settle", "LIFE-011":"settle",
+  "CALM-004":"settle", "CALM-005":"settle", "CALM-006":"settle", "CALM-007":"settle",
+  "CALM-008":"settle", "CALM-009":"settle", "CALM-010":"settle", "CALM-011":"settle",
+  "CALM-012":"settle", "CALM-013":"settle", "CALM-014":"settle", "CALM-019":"settle",
+  "CALM-021":"settle", "CALM-022":"settle", "CALM-023":"settle", "CALM-024":"settle",
+  "CALM-015":"scent-search",
+  "CALM-025":"wait-release",
+  "LIFE-027":"settle", "LIFE-028":"settle", "LIFE-030":"settle", "LIFE-031":"settle", "LIFE-032":"settle",
+  "LIFE-012":"leave-it", "LIFE-013":"leave-it", "LIFE-014":"leave-it", "LIFE-015":"leave-it",
+  "LIFE-016":"leave-it", "LIFE-019":"leave-it", "LIFE-020":"leave-it",
+  "LIFE-018":"trade",
+  "LIFE-024":"loose-lead", "LIFE-025":"loose-lead", "LIFE-026":"loose-lead",
+  "LIFE-029":"four-paws",
+  "ALONE-003":"alone-time", "ALONE-004":"alone-time", "ALONE-005":"alone-time", "ALONE-006":"alone-time",
+  "ALONE-007":"alone-time", "ALONE-008":"alone-time", "ALONE-009":"alone-time", "ALONE-011":"alone-time",
+  "ALONE-012":"alone-time", "ALONE-013":"alone-time", "ALONE-014":"alone-time",
+  "ENR-001":"scent-search", "ENR-002":"scent-search", "ENR-004":"scent-search", "ENR-005":"scent-search",
+  "ENR-014":"scent-search", "ENR-015":"scent-search", "ENR-016":"scent-search",
+  "CARE-001":"touch-acceptance", "CARE-002":"touch-acceptance", "CARE-003":"touch-acceptance",
+  "CARE-004":"touch-acceptance", "CARE-005":"touch-acceptance", "CARE-006":"touch-acceptance",
+  "CARE-012":"touch-acceptance", "CARE-013":"touch-acceptance", "CARE-017":"touch-acceptance",
+  "CARE-019":"touch-acceptance", "CARE-020":"touch-acceptance", "CARE-022":"touch-acceptance",
+  "CARE-024":"touch-acceptance", "CARE-027":"touch-acceptance",
+  "CARE-007":"equipment-intro", "CARE-008":"equipment-intro", "CARE-009":"equipment-intro",
+  "CARE-010":"equipment-intro", "CARE-011":"equipment-intro", "CARE-018":"equipment-intro",
+  "CARE-021":"equipment-intro", "CARE-023":"equipment-intro",
+  "HOME-009":"equipment-intro", "HOME-010":"equipment-intro",
+  "HOME-001":"toilet-training", "HOME-002":"toilet-training", "HOME-003":"toilet-training",
+  "HOME-004":"toilet-training", "HOME-005":"toilet-training", "HOME-008":"toilet-training",
+  "TRK-002":"lure-fade", "TRK-003":"lure-fade", "TRK-004":"lure-fade", "TRK-005":"lure-fade",
+  "TRK-006":"lure-fade", "TRK-007":"lure-fade", "TRK-008":"lure-fade", "TRK-009":"lure-fade",
+  "TRK-010":"lure-fade", "TRK-016":"lure-fade", "TRK-017":"lure-fade",
+  "TRK-015":"chin-rest",
+  "TRK-022":"recall", "TRK-023":"recall",
+  "TRK-024":"wait-release",
+  "TRK-021":"loose-lead", "COM-008":"loose-lead",
+  "TRK-018":"scent-search", "TRK-019":"scent-search", "TRK-020":"scent-search",
+  "HOME-011":"pairing",
+  "HOME-014":"wait-release", "HOME-015":"wait-release", "HOME-028":"wait-release",
+  "COM-013":"wait-release", "COM-014":"wait-release",
+  "HOME-020":"trade",
+  "HOME-024":"settle", "HOME-025":"settle",
+  "COM-003":"name-response", "COM-010":"name-response", "COM-011":"name-response",
+  "COM-012":"name-response", "COM-018":"name-response", "COM-019":"name-response", "COM-020":"name-response",
+  "COM-004":"hand-target",
+  "FND-011":"lure-fade", "FND-012":"lure-fade",
+  "ENR-003":"scent-search", "WAL-020":"scent-search",
+  "ENR-006":"shaping", "ENR-007":"shaping", "ENR-012":"shaping", "ENR-013":"shaping",
+  "RG-007":"pairing", "RG-008":"pairing", "RG-009":"pairing", "SOC-003":"pairing", "SOC-018":"pairing",
+  "RG-010":"trade", "RG-014":"trade",
+  "CHEW-007":"capturing",
+  "CHEW-009":"alone-time",
+  "SOC-004":"threshold-distance", "SOC-005":"threshold-distance", "SOC-006":"threshold-distance",
+  "SOC-007":"threshold-distance", "SOC-011":"threshold-distance", "SOC-012":"threshold-distance",
+  "SOC-013":"threshold-distance", "SOC-014":"threshold-distance", "SOC-015":"threshold-distance",
+  "SOC-016":"threshold-distance", "SOC-017":"threshold-distance", "SOC-021":"threshold-distance",
+  "SOC-022":"threshold-distance", "SOC-023":"threshold-distance", "SOC-026":"threshold-distance",
+  "SOC-019":"leave-it", "SOC-020":"leave-it",
+  "MOUTH-001":"redirect-chew", "MOUTH-002":"redirect-chew",
+  "WAL-002":"equipment-intro", "CARE-025":"equipment-intro", "CARE-026":"equipment-intro", "CARE-028":"equipment-intro",
+  "ALONE-002":"settle", "REACT-018":"settle", "ADV-022":"settle",
+  "BARK-007":"capturing", "BARK-014":"capturing",
+  "BARK-008":"emergency-turn", "BARK-009":"emergency-turn", "CHASE-006":"emergency-turn", "CHASE-007":"emergency-turn",
+  "BARK-011":"pairing", "OWN-026":"pairing",
+  "BARK-012":"four-paws",
+  "BARK-017":"threshold-distance", "REACT-011":"threshold-distance", "REACT-012":"threshold-distance",
+  "REACT-016":"threshold-distance", "REACT-020":"threshold-distance", "CHASE-013":"threshold-distance", "CHASE-014":"threshold-distance",
+  "CHASE-003":"name-response", "CHASE-004":"name-response",
+  "CHASE-005":"scent-search", "TRK-014":"scent-search", "TRK-026":"scent-search", "REACT-008":"scent-search",
+  "CHASE-008":"recall",
+  "CHASE-009":"wait-release", "CHASE-010":"wait-release",
+  "CHASE-011":"leave-it", "CHASE-012":"leave-it", "REACT-009":"leave-it",
+  "OWN-010":"lure-fade",
+  "TRK-011":"retrieve", "TRK-012":"retrieve", "TRK-013":"retrieve",
+  "ADV-018":"settle", "ADV-021":"settle",
+  "FND-004":"marker-timing",
+  "HOME-013":"pairing",
+  "HOME-006":"toilet-training",
+  "LIFE-036":"capturing",
+  "BARK-015":"threshold-distance", "ADV-017":"threshold-distance", "TROUBLE-007":"threshold-distance", "SAFE-015":"threshold-distance",
+  "TROUBLE-006":"settle",
+  "SAFE-009":"recall", "REC-017":"recall",
+  "WAL-017":"wait-release", "OWN-028":"wait-release",
+  "WAL-033":"threshold-distance",
 };
 
 function openLessonDetail(lessonId){
@@ -1499,6 +1690,8 @@ window.__sk.recordLessonAttempt = recordLessonAttempt;
 window.__sk.recalculateLessonProgress = recalculateLessonProgress;
 window.__sk.deleteSession = deleteSession;
 window.__sk.computeVerdict = computeVerdict;
+window.__sk.LESSON_DIAGRAM = LESSON_DIAGRAM;
+window.__sk.CONCEPT_DIAGRAMS = CONCEPT_DIAGRAMS;
 })();
 
 /* ============================================================
@@ -1863,6 +2056,7 @@ function renderMore(container){
     <div class="row-list">
       <button class="row" id="safetyRow"><div class="row-tab" style="background:var(--red)"></div><div class="row-body"><div class="row-title">Safety gates</div><div class="row-meta">${sk.KB.collections.safety_gates.length} situations that need extra care</div></div><span class="row-chev">›</span></button>
       <button class="row" id="mythsRow"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">Myths & realities</div><div class="row-meta">${sk.KB.collections.myths.length} common misconceptions</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="bodyLangRow"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">Dog body language guide</div><div class="row-meta">${sk.KB.collections.body_language_guide.length} states, what to look for</div></div><span class="row-chev">›</span></button>
       <button class="row" id="guidanceRow"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title">Owner guidance</div><div class="row-meta">General principles for training well</div></div><span class="row-chev">›</span></button>
       <button class="row" id="evidenceRow"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">Evidence library</div><div class="row-meta">${sk.KB.collections.evidence_cards.length} topics, what the evidence does and doesn't say</div></div><span class="row-chev">›</span></button>
       <button class="row" id="rulesRow"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">How progression works</div><div class="row-meta">The rules behind session recommendations</div></div><span class="row-chev">›</span></button>
@@ -1911,6 +2105,7 @@ function renderMore(container){
   container.querySelectorAll("[data-programme]").forEach(r=>r.addEventListener("click", ()=>openProgrammeDetail(r.dataset.programme)));
   container.querySelector("#safetyRow").addEventListener("click", openSafetyReference);
   container.querySelector("#mythsRow").addEventListener("click", openMythsReference);
+  container.querySelector("#bodyLangRow").addEventListener("click", openBodyLanguageGuide);
   container.querySelector("#guidanceRow").addEventListener("click", openGuidanceReference);
   container.querySelector("#troubleshootRow").addEventListener("click", openTroubleshootPicker);
   container.querySelector("#evidenceRow").addEventListener("click", openEvidenceReference);
@@ -2148,6 +2343,29 @@ function openSafetyReference(){
     }).join("")}</div>
   `);
 }
+function openBodyLanguageGuide(){
+  const states = sk.KB.collections.body_language_guide;
+  const tierColor = { green: "var(--forest)", amber: "var(--ochre)", red: "var(--red)" };
+  const tierLabel = { green: "Good to go", amber: "Consider easing off", red: "Stop and create space" };
+  sk.openModal(`
+    <h3>Dog body language guide</h3>
+    <p style="color:var(--ink-soft); font-size:13px; margin-bottom:14px;">A quick visual reference for common states — helpful for deciding whether to continue, ease off, or stop.</p>
+    ${states.map(s=>`
+      <div class="card" style="padding:0; overflow:hidden;">
+        <img src="${sk.esc(s.image)}" alt="" loading="lazy" style="width:100%; display:block;">
+        <div style="padding:14px;">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+            <span style="width:9px; height:9px; border-radius:50%; background:${tierColor[s.tier]}; flex:none;"></span>
+            <strong>${sk.esc(s.state)}</strong>
+            <span style="margin-left:auto; font-size:11.5px; color:${tierColor[s.tier]}; font-weight:600;">${tierLabel[s.tier]}</span>
+          </div>
+          <div>${s.signals.map(sig=>`<div class="checklist-item"><span class="dot"></span>${sk.esc(sig)}</div>`).join("")}</div>
+        </div>
+      </div>
+    `).join("")}
+  `);
+}
+
 function openMythsReference(){
   const myths = sk.KB.collections.myths;
   sk.openModal(`
@@ -2313,9 +2531,85 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "2.3.0";
+const APP_VERSION = "3.12.0";
 
 const CHANGELOG = [
+  { version: "3.12.0", notes: [
+    "Added your first 14 real illustrated images — compressed from ~7MB down to under 800KB total with no visible quality loss",
+    "New: Dog body language guide in Profile — 6 states (relaxed, ready to learn, getting distracted, frustrated, fearful, over threshold) each with a real image and what to look for",
+    "8 images placed on their best-matching lessons: the 4 Troubleshooting \"common mistake\" lessons, plus Paw, The sniff walk, Reward delivery position, and Understanding positive reinforcement",
+  ]},
+  { version: "3.11.0", notes: [
+    "The why-it-matters content fill is complete — all 556 lessons now have a genuine, individually-written explanation of why that specific lesson matters, not a generic placeholder",
+    "This closes out the content gap first found while auditing the animated diagrams: what started as 352 lessons needing real content is now fully done",
+  ]},
+  { version: "3.10.0", notes: [
+    "250 lessons done total on the why-it-matters fill (Socialisation and Advanced/Real World now complete) — 111 of 556 remain, less than a third of the original 352 left",
+  ]},
+  { version: "3.9.0", notes: [
+    "217 lessons done total on the why-it-matters fill (Reactivity and Assessment now complete) — 144 of 556 remain, well past the halfway point of the original 352",
+  ]},
+  { version: "3.8.0", notes: [
+    "182 lessons done total on the why-it-matters fill (Handling & Cooperative Care and Tricks & Games now complete) — 179 of 556 remain, just past the halfway point of the original 352",
+  ]},
+  { version: "3.7.0", notes: [
+    "144 lessons done total on the why-it-matters fill (Life Skills and Calmness & Regulation now complete, alongside Basic Skills, Walking, Foundation, Recall) — 218 of 556 remain, down from 352 at the start",
+  ]},
+  { version: "3.6.0", notes: [
+    "92 lessons done total on the why-it-matters fill (Basic Skills, Walking, Foundation, Recall now complete) — 267 of 556 remain with the generic placeholder, down from 352",
+  ]},
+  { version: "3.5.0", notes: [
+    "Started the why-it-matters content fill: 48 lessons done (all of Basic Skills and Walking) — 304 of 556 lessons remain with the generic placeholder, down from 352",
+    "Each rewrite explains the specific reason that lesson exists — why this exact difficulty step, distraction, or context matters — rather than a one-size-fits-all statement",
+  ]},
+  { version: "3.4.0", notes: [
+    "Fixed the boilerplate content gap in all 18 Behaviour Assessment lessons — the objective field was already genuine, but why_it_matters, setup, steps, success_criteria, and equipment were still generic placeholders shared identically across all 18",
+    "Found and fixed a further 48 lessons where success_criteria was a mismatched \"4/5 successful repetitions\" template — nonsensical for diagnostic/audit lessons that have no reps at all",
+    "Found a larger, separate issue while checking: 352 of 556 lessons (63%) still carry a generic why_it_matters placeholder. This is a genuine content gap, not yet fixed given its scale — flagged clearly as a follow-up",
+  ]},
+  { version: "3.3.0", notes: [
+    "354 of 556 lessons now have an animated diagram — final mop-up pass, reading full untruncated step text for all remaining lessons rather than titles or summaries",
+    "This is considered the final state for diagram coverage: the remaining 202 lessons are genuinely explanatory frameworks, diagnostic audits, decision-tree engines, or generic multi-skill/generic-context tests without one fixed technique to illustrate",
+  ]},
+  { version: "3.2.0", notes: [
+    "350 of 556 lessons now have an animated diagram — did a systematic content-level scan (not just titles) across every remaining lesson to catch matches hiding in unexpected categories",
+    "Found genuine technique lessons filed under Safety & Referral and Troubleshooting that read as conceptual by title alone — \"Building a separate emergency recall\" is literally a recall technique, \"Responding to fear signals\" is threshold-distance work",
+  ]},
+  { version: "3.1.0", notes: [
+    "343 of 556 lessons now have an animated diagram — added a dedicated retrieve diagram (throw, pick up, bring back) rather than force-fitting it into an existing type",
+    "Went back through Advanced/Real World, Foundation, Home Manners, Chewing, and Resource Guarding at the content level (not just titles) and found a handful of genuine remaining matches, including \"Responding to accidents\" sharing the same beats as toilet training",
+    "These five categories are now considered closed out — everything remaining in them is genuinely management, policy, or diagnostic content without a technique to illustrate",
+  ]},
+  { version: "3.0.0", notes: [
+    "335 of 556 lessons now have an animated diagram — completed an honest full pass through every remaining lesson to catch genuine matches vs. correctly diagram-free conceptual content",
+    "Found and fixed a real gap: the entire Chasing & Predatory Behaviour category had been missed in earlier passes despite having several clear technique matches",
+    "The 221 lessons intentionally left without a diagram are conceptual, diagnostic, or measurement-based (e.g. Assessment audits, Safety recognition guidance, Owner Skills theory, Troubleshooting FAQs) — a diagram wouldn't illustrate anything actionable for these",
+  ]},
+  { version: "2.9.0", notes: [
+    "300 of 556 lessons now have an animated diagram (up from 263) — past the halfway mark",
+    "Socialisation, Resource Guarding, Mouthing, and most of Foundation/Enrichment/Walking now covered using existing diagram types",
+  ]},
+  { version: "2.8.0", notes: [
+    "263 of 556 lessons now have an animated diagram (up from 218) — Tricks & Games, Home Manners, and Communication & Engagement now largely covered",
+    "New toilet-training diagram, built entirely from already-tested icons",
+  ]},
+  { version: "2.7.0", notes: [
+    "218 of 556 lessons now have an animated diagram (up from 150) — expanded Life Skills, Calmness & Regulation into existing types, and added touch-acceptance and equipment-introduction for Handling & Cooperative Care",
+    "Both new diagram types reused already-tested icons (hand, calm face, sparkle) rather than introducing new ones — no new visual risk",
+  ]},
+  { version: "2.6.0", notes: [
+    "Working toward full diagram coverage: expanded existing diagram types (recall, loose-lead, lure-fade, wait/release, trade, settle, emergency-turn) to every lesson that genuinely fits — 150 lessons now covered, up from 78",
+    "2 new diagram types: alone-time (step away, dog settles, return calmly) and scent search (scatter, sniff, find)",
+    "Found and fixed a real gap: LESSON_DIAGRAM wasn't actually accessible for testing/verification outside the app itself — fixed the module scoping so it can be properly checked",
+  ]},
+  { version: "2.5.0", notes: [
+    "5 more animated diagrams: redirect-to-chew, pairing (novel object/sound with reward), shaping, emergency turn-away, and name response — now 18 diagram types covering 78 lessons",
+    "Caught and fixed two icons that accidentally looked identical to an unrelated \"key\" shape before shipping",
+  ]},
+  { version: "2.4.0", notes: [
+    "5 more animated diagrams: four-paws greeting, chin rest (cooperative care start-button), wait/release, capturing, and threshold distance — now 13 diagram types covering 63 lessons",
+    "Fixed a mismatch caught before shipping: chin rest's \"free to lift away\" beat looked identical to an unrelated \"wait\" icon in an earlier draft — redesigned for clarity",
+  ]},
   { version: "2.3.0", notes: [
     "Full audit of safety warnings across every category — found the same blanket category-level tagging pattern in Assessment, Barking, Behaviour Assessment, Chasing, Handling & Cooperative Care, Reactivity, and Socialisation (following on from the Chewing/Resource Guarding/Recall fixes in the last update)",
     "Over 300 incorrect or disproportionate warnings removed across 556 lessons; genuine gaps filled in too (e.g. Muzzle training previously had no safety note at all)",
