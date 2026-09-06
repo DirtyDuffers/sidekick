@@ -2571,9 +2571,14 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "3.15.0";
+const APP_VERSION = "3.16.0";
 
 const CHANGELOG = [
+  { version: "3.16.0", notes: [
+    "Added the Recall in Action, Wait & Release, and Settle & Calm sets — 12 more real images, all mapped to specific lessons",
+    "Caught and avoided a real mismatch before shipping: one settle image showed an active hand cue, but the lesson I'd initially picked (\"Capturing calm, with no cue at all\") is specifically about NOT cueing — moved it to a more fitting lesson instead",
+    "33 lessons now have a real photo, all viewable in Profile → Media gallery",
+  ]},
   { version: "3.15.0", notes: [
     "New: Media gallery in Profile — every lesson with a real photo shown as a tappable thumbnail list, so new images can be checked at a glance instead of hunting through individual lessons",
   ]},
