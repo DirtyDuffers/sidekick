@@ -1104,6 +1104,7 @@ function youtubeEmbedUrl(url){
 }
 function renderMediaBlock(media){
   if(!media) return "";
+  if(typeof media === "string") media = { image: media };
   const video = media.video || media.hero_video;
   const image = media.image || media.hero_image;
   if(video){
@@ -2531,9 +2532,19 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "3.12.0";
+const APP_VERSION = "3.14.0";
 
 const CHANGELOG = [
+  { version: "3.14.0", notes: [
+    "Added 11 more real images from a second cropped composite, all filling genuine gaps rather than replacing anything — Keeping cues consistent, Paw presentation, first marker session, Finding the working threshold distance, Responding to fear signals, and 6 more",
+    "\"Finding the working threshold distance\" — one of the highest-usage lessons in the library — now shows a real dog noticing another dog at a distance instead of an abstract dot diagram",
+    "3 images from the composite (clock+treat, dog assessing a ramp, nose-to-nose bonding) held back — no confident single-lesson match found, noted for discussion rather than force-fit",
+  ]},
+  { version: "3.13.0", notes: [
+    "Added the Training Fundamentals image set — cropped from a single composite into 6 individual panels (Get ready, Wait, Mark, Reward, Repeat, Increase difficulty)",
+    "\"Practising marker timing\" now shows a real step-by-step photo sequence, one image per instruction, matching the original visual style design exactly",
+    "Fixed a real bug found while wiring this up: per-step lesson images weren't rendering at all — the display function expected an object but was being given a plain file path",
+  ]},
   { version: "3.12.0", notes: [
     "Added your first 14 real illustrated images — compressed from ~7MB down to under 800KB total with no visible quality loss",
     "New: Dog body language guide in Profile — 6 states (relaxed, ready to learn, getting distracted, frustrated, fearful, over threshold) each with a real image and what to look for",
