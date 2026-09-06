@@ -2062,6 +2062,7 @@ function renderMore(container){
       <button class="row" id="evidenceRow"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">Evidence library</div><div class="row-meta">${sk.KB.collections.evidence_cards.length} topics, what the evidence does and doesn't say</div></div><span class="row-chev">›</span></button>
       <button class="row" id="rulesRow"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">How progression works</div><div class="row-meta">The rules behind session recommendations</div></div><span class="row-chev">›</span></button>
       <button class="row" id="protocolsRow"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title">Training protocols</div><div class="row-meta">${sk.KB.collections.protocols.length} core frameworks for common training situations</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="mediaGalleryRow"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">Media gallery</div><div class="row-meta">Every lesson with a real photo, in one place</div></div><span class="row-chev">›</span></button>
     </div>
 
     <div class="section-label">Appearance</div>
@@ -2112,6 +2113,7 @@ function renderMore(container){
   container.querySelector("#evidenceRow").addEventListener("click", openEvidenceReference);
   container.querySelector("#rulesRow").addEventListener("click", openRulesReference);
   container.querySelector("#protocolsRow").addEventListener("click", openProtocolsReference);
+  container.querySelector("#mediaGalleryRow").addEventListener("click", openMediaGallery);
   container.querySelector("#themeChips").addEventListener("click", e=>{
     const b = e.target.closest(".chip"); if(!b) return;
     container.querySelectorAll("#themeChips .chip").forEach(c=>c.classList.remove("selected"));
@@ -2481,6 +2483,43 @@ function openRulesReference(){
   `);
 }
 
+function openMediaGallery(){
+  const lessons = sk.KB.collections.lessons.filter(l=>l.media && l.media.image);
+  const bodyLang = sk.KB.collections.body_language_guide || [];
+  sk.openModal(`
+    <h3>Media gallery</h3>
+    <p style="color:var(--ink-soft); font-size:13px; margin-bottom:14px;">${lessons.length} lesson${lessons.length===1?"":"s"} with a real photo, plus the ${bodyLang.length}-state body language guide. Tap any lesson to open it.</p>
+    <div class="section-label" style="margin-top:0;">Lessons</div>
+    <div class="row-list">
+      ${lessons.map(l=>{
+        const stepCount = (l.media.steps||[]).length;
+        return `<button class="row" data-gallery-lesson="${l.lesson_id}" style="padding:8px;">
+          <img src="${sk.esc(l.media.image)}" alt="" loading="lazy" style="width:52px; height:52px; border-radius:10px; object-fit:cover; flex:none;">
+          <div class="row-body">
+            <div class="row-title">${sk.esc(l.title)}</div>
+            <div class="row-meta">${sk.esc(l.category)}${stepCount?` · +${stepCount} step image${stepCount===1?"":"s"}`:""}</div>
+          </div>
+          <span class="row-chev">›</span>
+        </button>`;
+      }).join("")}
+    </div>
+    ${bodyLang.length ? `<div class="section-label">Body language guide</div>
+    <div class="row-list" style="margin-bottom:14px;">
+      ${bodyLang.map(s=>`<button class="row" data-gallery-guide style="padding:8px;">
+        <img src="${sk.esc(s.image)}" alt="" loading="lazy" style="width:52px; height:52px; border-radius:10px; object-fit:cover; flex:none;">
+        <div class="row-body"><div class="row-title">${sk.esc(s.state)}</div></div>
+        <span class="row-chev">›</span>
+      </button>`).join("")}
+    </div>` : ""}
+  `);
+  document.querySelectorAll("[data-gallery-lesson]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ sk.closeModal(); sk.openLessonDetail(btn.dataset.galleryLesson); });
+  });
+  document.querySelectorAll("[data-gallery-guide]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ sk.closeModal(); openBodyLanguageGuide(); });
+  });
+}
+
 function openProtocolsReference(){
   const protocols = sk.KB.collections.protocols;
   sk.openModal(`
@@ -2532,9 +2571,12 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "3.14.0";
+const APP_VERSION = "3.15.0";
 
 const CHANGELOG = [
+  { version: "3.15.0", notes: [
+    "New: Media gallery in Profile — every lesson with a real photo shown as a tappable thumbnail list, so new images can be checked at a glance instead of hunting through individual lessons",
+  ]},
   { version: "3.14.0", notes: [
     "Added 11 more real images from a second cropped composite, all filling genuine gaps rather than replacing anything — Keeping cues consistent, Paw presentation, first marker session, Finding the working threshold distance, Responding to fear signals, and 6 more",
     "\"Finding the working threshold distance\" — one of the highest-usage lessons in the library — now shows a real dog noticing another dog at a distance instead of an abstract dot diagram",
