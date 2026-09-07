@@ -235,8 +235,9 @@ function getFocusable(container){
 function openModal(html){
   modalReturnFocus = document.activeElement;
   const sheet = document.getElementById("modalSheet");
-  sheet.innerHTML = '<div class="handle"></div>' + html;
+  sheet.innerHTML = '<div class="handle"></div><button type="button" class="modal-close" aria-label="Close">&times;</button>' + html;
   document.getElementById("modalOverlay").classList.add("active");
+  sheet.querySelector(".modal-close").addEventListener("click", closeModal);
   // Move focus into the dialog so screen readers announce it and keyboard
   // users don't stay stranded on whatever triggered it.
   const focusable = getFocusable(sheet);
@@ -2510,7 +2511,7 @@ function openSafetyReference(){
     }).join("")}</div>
   `);
 }
-function openBodyLanguageGuide(){
+function openBodyLanguageGuide(targetStateId){
   const states = sk.KB.collections.body_language_guide;
   const tierColor = { green: "var(--forest)", amber: "var(--ochre)", red: "var(--red)" };
   const tierLabel = { green: "Good to go", amber: "Consider easing off", red: "Stop and create space" };
@@ -2518,19 +2519,23 @@ function openBodyLanguageGuide(){
     <h3>Dog body language guide</h3>
     <p style="color:var(--ink-soft); font-size:13px; margin-bottom:14px;">A quick visual reference for common states — helpful for deciding whether to continue, ease off, or stop.</p>
     ${states.map(s=>`
-      <div class="card" style="padding:0; overflow:hidden;">
-        <img src="${sk.esc(s.image)}" alt="" loading="lazy" style="width:100%; display:block;">
-        <div style="padding:14px;">
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+      <div class="card" id="blg-${sk.esc(s.state_id)}" style="padding:0; overflow:hidden;">
+        <div style="padding:14px 14px 0;">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
             <span style="width:9px; height:9px; border-radius:50%; background:${tierColor[s.tier]}; flex:none;"></span>
             <strong>${sk.esc(s.state)}</strong>
             <span style="margin-left:auto; font-size:11.5px; color:${tierColor[s.tier]}; font-weight:600;">${tierLabel[s.tier]}</span>
           </div>
-          <div>${s.signals.map(sig=>`<div class="checklist-item"><span class="dot"></span>${sk.esc(sig)}</div>`).join("")}</div>
         </div>
+        <img src="${sk.esc(s.image)}" alt="" loading="lazy" style="width:100%; aspect-ratio:4/3; object-fit:cover; display:block;">
+        <div style="padding:14px;">${s.signals.map(sig=>`<div class="checklist-item"><span class="dot"></span>${sk.esc(sig)}</div>`).join("")}</div>
       </div>
     `).join("")}
   `);
+  if(targetStateId){
+    const target = document.getElementById("blg-"+targetStateId);
+    if(target) target.scrollIntoView({block:"start"});
+  }
 }
 
 function openMythsReference(){
@@ -2669,7 +2674,7 @@ function openMediaGallery(){
     </div>
     ${bodyLang.length ? `<div class="section-label">Body language guide</div>
     <div class="row-list" style="margin-bottom:14px;">
-      ${bodyLang.map(s=>`<button class="row" data-gallery-guide style="padding:8px;">
+      ${bodyLang.map(s=>`<button class="row" data-gallery-guide="${sk.esc(s.state_id)}" style="padding:8px;">
         <img src="${sk.esc(s.image)}" alt="" loading="lazy" style="width:52px; height:52px; border-radius:10px; object-fit:cover; flex:none;">
         <div class="row-body"><div class="row-title">${sk.esc(s.state)}</div></div>
         <span class="row-chev">›</span>
@@ -2680,7 +2685,7 @@ function openMediaGallery(){
     btn.addEventListener("click", ()=>{ sk.closeModal(); sk.openLessonDetail(btn.dataset.galleryLesson); });
   });
   document.querySelectorAll("[data-gallery-guide]").forEach(btn=>{
-    btn.addEventListener("click", ()=>{ sk.closeModal(); openBodyLanguageGuide(); });
+    btn.addEventListener("click", ()=>{ sk.closeModal(); openBodyLanguageGuide(btn.dataset.galleryGuide); });
   });
 }
 
@@ -2735,9 +2740,14 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "4.3.0";
+const APP_VERSION = "4.4.0";
 
 const CHANGELOG = [
+  { version: "4.4.0", notes: [
+    "Fixed a real navigation bug: tapping a specific state in Media Gallery's body-language list always opened the guide at the top entry regardless of which one you tapped — it now jumps to the exact one you selected",
+    "Reordered the body language guide cards: title and status now appear above the image, with the detail list below — image no longer pushes the identifying info off-screen first",
+    "Every modal now has a visible × close button in the top-right corner, in addition to the existing swipe-down and tap-outside-to-close",
+  ]},
   { version: "4.3.0", notes: [
     "Added the full \"Sidekick\" logo lockup (icon + wordmark) to the onboarding welcome screen and the About page, replacing a generic paw emoji and a separate icon-plus-heading combo",
     "Correctly switches between light and dark-background versions depending on your theme setting, including \"Auto\" mode",

@@ -296,8 +296,14 @@ textarea{resize:vertical; min-height:70px;}
 .modal-sheet{
   background:var(--canvas); width:100%; max-width:560px; border-radius:16px 16px 0 0;
   padding:20px 20px calc(20px + env(safe-area-inset-bottom)); max-height:88vh; overflow-y:auto;
+  position:relative;
 }
 .modal-sheet .handle{width:36px; height:4px; background:var(--line); border-radius:4px; margin:0 auto 16px;}
+.modal-close{
+  position:absolute; top:14px; right:14px; width:32px; height:32px; border-radius:50%;
+  border:none; background:var(--canvas-raised); color:var(--ink); font-size:22px; line-height:1;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:1;
+}
 
 .toast{
   position:fixed; bottom:88px; left:50%; transform:translateX(-50%);
