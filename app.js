@@ -301,7 +301,11 @@ function setTabbarVisible(visible){
 function goScreen(name, opts){
   opts = opts || {};
   currentScreen = name;
-  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.screen===name));
+  document.querySelectorAll(".tab").forEach(t=>{
+    const isActive = t.dataset.screen===name;
+    t.classList.toggle("active", isActive);
+    if(isActive) t.setAttribute("aria-current","page"); else t.removeAttribute("aria-current");
+  });
   setTabbarVisible(TAB_SCREENS.includes(name));
   const fallback = SCREEN_TOPBAR_DEFAULTS[name];
   if(fallback) window.__sk.setTopbar(fallback[0], fallback[1], "");
@@ -474,30 +478,30 @@ function renderOnboarding(container){
         <p style="color:var(--ink-soft); font-size:14.5px;">A calm, reward-based training companion.<br>Let's set up your dog's profile.</p>
       </div>
       <form id="onboardForm">
-        <label>Photo <span style="font-weight:400;color:var(--ink-soft)">(optional — you can always add one later)</span></label>
+        <label id="ob_photoLabel">Photo <span style="font-weight:400;color:var(--ink-soft)">(optional — you can always add one later)</span></label>
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
           <div id="ob_photoPreview">${sk.dogAvatarHTML({emoji:sk.DOG_EMOJI[0], color:sk.AVATAR_COLORS[0], photo:null}, "lg")}</div>
-          <button type="button" class="btn btn-secondary btn-sm" id="ob_photoPick">Add photo</button>
-          <input type="file" id="ob_photoInput" accept="image/*" style="display:none;">
+          <button type="button" class="btn btn-secondary btn-sm" id="ob_photoPick" aria-describedby="ob_photoLabel">Add photo</button>
+          <input type="file" id="ob_photoInput" accept="image/*" aria-label="Upload a photo of your dog" style="display:none;">
         </div>
 
-        <label>Dog's name</label>
+        <label for="ob_name">Dog's name</label>
         <input type="text" id="ob_name" placeholder="e.g. Bramble" required maxlength="30">
 
-        <label>Breed <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+        <label for="ob_breed">Breed <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
         <input type="text" id="ob_breed" placeholder="e.g. Cocker Spaniel">
 
-        <label>Life stage</label>
-        <div class="chip-group" id="ob_stage">
+        <label id="ob_stageLabel">Life stage</label>
+        <div class="chip-group" id="ob_stage" role="group" aria-labelledby="ob_stageLabel">
           ${sk.AGE_STAGES.map((s,i)=>`<button type="button" class="chip${i===1?' selected':''}" data-val="${s}">${s}</button>`).join("")}
         </div>
 
-        <label>Pick an avatar <span style="font-weight:400;color:var(--ink-soft)">(used if no photo)</span></label>
-        <div class="chip-group" id="ob_emoji">
-          ${sk.DOG_EMOJI.map((e,i)=>`<button type="button" class="chip${i===0?' selected':''}" data-val="${e}" style="font-size:18px;">${e}</button>`).join("")}
+        <label id="ob_avatarLabel">Pick an avatar <span style="font-weight:400;color:var(--ink-soft)">(used if no photo)</span></label>
+        <div class="chip-group" id="ob_emoji" role="group" aria-labelledby="ob_avatarLabel">
+          ${sk.DOG_EMOJI.map((e,i)=>`<button type="button" class="chip${i===0?' selected':''}" data-val="${e}" style="font-size:18px;" aria-label="Avatar option ${i+1}">${e}</button>`).join("")}
         </div>
-        <div class="chip-group" id="ob_color">
-          ${sk.AVATAR_COLORS.map((c,i)=>`<button type="button" class="chip${i===0?' selected':''}" data-val="${c}" style="width:34px;height:34px;padding:0;border-radius:50%;background:${c};border-color:${c};"></button>`).join("")}
+        <div class="chip-group" id="ob_color" role="group" aria-label="Avatar colour">
+          ${sk.AVATAR_COLORS.map((c,i)=>`<button type="button" class="chip${i===0?' selected':''}" data-val="${c}" style="width:34px;height:34px;padding:0;border-radius:50%;background:${c};border-color:${c};" aria-label="Colour option ${i+1}"></button>`).join("")}
         </div>
 
         <button type="submit" class="btn btn-primary btn-block" style="margin-top:8px;">Start training</button>
@@ -569,29 +573,29 @@ function renderDogForm(existing){
   const html = `
     <h3>${isNew?"Add a dog":"Edit "+sk.esc(dog.name)}</h3>
     <form id="dogForm">
-      <label>Photo <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+      <label id="df_photoLabel">Photo <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
       <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
         <div id="df_photoPreview">${dogAvatarHTML({...dog, emoji, color, photo}, "lg")}</div>
         <div style="display:flex; flex-direction:column; gap:6px;">
-          <button type="button" class="btn btn-secondary btn-sm" id="df_photoPick">${photo?"Change photo":"Add photo"}</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="df_photoPick" aria-describedby="df_photoLabel">${photo?"Change photo":"Add photo"}</button>
           ${photo ? '<button type="button" class="btn btn-ghost btn-sm" id="df_photoRemove">Remove photo</button>' : ""}
         </div>
-        <input type="file" id="df_photoInput" accept="image/*" style="display:none;">
+        <input type="file" id="df_photoInput" accept="image/*" aria-label="Upload a photo of your dog" style="display:none;">
       </div>
-      <label>Name</label>
+      <label for="df_name">Name</label>
       <input type="text" id="df_name" value="${sk.esc(dog.name)}" maxlength="30" required>
-      <label>Breed <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+      <label for="df_breed">Breed <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
       <input type="text" id="df_breed" value="${sk.esc(dog.breed||"")}">
-      <label>Life stage</label>
-      <div class="chip-group" id="df_stage">
+      <label id="df_stageLabel">Life stage</label>
+      <div class="chip-group" id="df_stage" role="group" aria-labelledby="df_stageLabel">
         ${sk.AGE_STAGES.map(s=>`<button type="button" class="chip${s===stage?' selected':''}" data-val="${s}">${s}</button>`).join("")}
       </div>
-      <label>${photo?"Backup avatar":"Avatar"} <span style="font-weight:400;color:var(--ink-soft)">${photo?"(shown if the photo can't load)":""}</span></label>
-      <div class="chip-group" id="df_emoji">
-        ${sk.DOG_EMOJI.map(e=>`<button type="button" class="chip${e===emoji?' selected':''}" data-val="${e}" style="font-size:18px;">${e}</button>`).join("")}
+      <label id="df_avatarLabel">${photo?"Backup avatar":"Avatar"} <span style="font-weight:400;color:var(--ink-soft)">${photo?"(shown if the photo can't load)":""}</span></label>
+      <div class="chip-group" id="df_emoji" role="group" aria-labelledby="df_avatarLabel">
+        ${sk.DOG_EMOJI.map((e,i)=>`<button type="button" class="chip${e===emoji?' selected':''}" data-val="${e}" style="font-size:18px;" aria-label="Avatar option ${i+1}">${e}</button>`).join("")}
       </div>
-      <div class="chip-group" id="df_color">
-        ${sk.AVATAR_COLORS.map(c=>`<button type="button" class="chip${c===color?' selected':''}" data-val="${c}" style="width:34px;height:34px;padding:0;border-radius:50%;background:${c};border-color:${c};"></button>`).join("")}
+      <div class="chip-group" id="df_color" role="group" aria-label="Avatar colour">
+        ${sk.AVATAR_COLORS.map((c,i)=>`<button type="button" class="chip${c===color?' selected':''}" data-val="${c}" style="width:34px;height:34px;padding:0;border-radius:50%;background:${c};border-color:${c};" aria-label="Colour option ${i+1}"></button>`).join("")}
       </div>
       <button type="submit" class="btn btn-primary btn-block">${isNew?"Add dog":"Save changes"}</button>
       ${!isNew?'<button type="button" id="df_delete" class="btn btn-danger btn-block" style="margin-top:8px;">Remove '+sk.esc(dog.name)+'</button>':""}
@@ -937,7 +941,7 @@ function renderHome(container){
     ${struggleNote ? `<p style="font-size:12.5px; color:var(--ink-soft); text-align:center; margin:0 8px 12px; line-height:1.5;">🧠 ${struggleNote}</p>` : ""}
 
     <div class="card" id="sessionCard" style="cursor:pointer;">
-      <div class="section-label" style="margin-top:0;">Today's training</div>
+      <div class="section-label" role="heading" aria-level="2" style="margin-top:0;">Today's training</div>
       <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:10px;">
         <span style="font-size:22px; font-weight:700; font-family:var(--font-display);">⭐ ${totalMin} min session</span>
       </div>
@@ -953,14 +957,14 @@ function renderHome(container){
 
     <div style="height:6px;"></div>
 
-    <div class="section-label">How can we help?</div>
+    <div class="section-label" role="heading" aria-level="2">How can we help?</div>
     <div class="row-list">
       <button class="row" id="quickWhatTrain"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>What should I train?</div><div class="row-meta">Browse by category</div></div><span class="row-chev">›</span></button>
       <button class="row" id="quickBehaviour"><div class="row-tab" style="background:var(--red)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><path d="M4 5h16v10H8l-4 4z"/><path d="M12 8.5v2.5M12 14v.01"/></svg>Help with a behaviour</div><div class="row-meta">Answer a couple of questions</div></div><span class="row-chev">›</span></button>
       <button class="row" id="quickBrowse"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><path d="M4 5.5c0-.6.4-1 1-1h5.5a2 2 0 0 1 2 2v13a1.5 1.5 0 0 0-1.5-1.5H4z"/><path d="M20 5.5c0-.6-.4-1-1-1h-5.5a2 2 0 0 0-2 2v13a1.5 1.5 0 0 1 1.5-1.5H20z"/></svg>Browse all lessons</div><div class="row-meta">${sk.KB.collections.lessons.length} lessons in the library</div></div><span class="row-chev">›</span></button>
     </div>
 
-    <div class="section-label">${sk.esc(dog.name)}'s progress <a href="#" id="seeProgress" style="font-size:11px;text-transform:none;letter-spacing:0;font-weight:600;color:var(--forest);">View all →</a></div>
+    <div class="section-label" role="heading" aria-level="2">${sk.esc(dog.name)}'s progress <a href="#" id="seeProgress" style="font-size:11px;text-transform:none;letter-spacing:0;font-weight:600;color:var(--forest);">View all →</a></div>
     <div class="card">
       ${topCategories.length ? topCategories.map(([cat,v])=>`
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
@@ -1034,7 +1038,7 @@ function openTrainingJourney(dog){
       <div class="stat-box"><div class="num">${longest}</div><div class="lbl">Longest streak</div></div>
     </div>
 
-    <div class="section-label" style="margin-top:0;">Skills by stage</div>
+    <div class="section-label" role="heading" aria-level="2" style="margin-top:0;">Skills by stage</div>
     <div class="card">
       ${sk.SKILL_STATES.map(st=>`
         <div style="display:flex; align-items:center; gap:10px; padding:5px 0;">
@@ -1048,7 +1052,7 @@ function openTrainingJourney(dog){
       </div>
     </div>
 
-    <div class="section-label">Progress by category</div>
+    <div class="section-label" role="heading" aria-level="2">Progress by category</div>
     <div class="card">
       ${categoryProgress.length ? categoryProgress.map(([cat,v])=>`
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
@@ -1232,8 +1236,8 @@ function openSourceDetail(sourceId){
     <h3 style="margin-bottom:2px;">${sk.esc(s.organisation || "Source")}</h3>
     <p style="font-size:13px; color:var(--ink-soft); margin-bottom:12px;">${sk.esc(s.title || "")}${s.year ? " · "+sk.esc(s.year) : ""}</p>
     ${s.evidence_type ? `<span class="badge badge-outline">${sk.esc(s.evidence_type)}</span>` : ""}
-    ${s.key_finding ? `<div class="section-label">Key finding</div><p style="font-size:13.5px;">${sk.esc(s.key_finding)}</p>` : ""}
-    ${s.limitations ? `<div class="section-label">Limitations</div><p style="font-size:13px; color:var(--ink-soft);">${sk.esc(s.limitations)}</p>` : ""}
+    ${s.key_finding ? `<div class="section-label" role="heading" aria-level="2">Key finding</div><p style="font-size:13.5px;">${sk.esc(s.key_finding)}</p>` : ""}
+    ${s.limitations ? `<div class="section-label" role="heading" aria-level="2">Limitations</div><p style="font-size:13px; color:var(--ink-soft);">${sk.esc(s.limitations)}</p>` : ""}
     ${s.url ? `<a href="${sk.esc(s.url)}" target="_blank" rel="noopener" class="btn btn-secondary btn-block" style="margin-top:14px;">View original source ↗</a>` : ""}
   `);
   // Delegated so it works regardless of how the modal content was built.
@@ -1582,7 +1586,7 @@ function openLessonDetail(lessonId){
     </div>
 
     ${prerequisites.length ? `
-    <div class="section-label">Before you start</div>
+    <div class="section-label" role="heading" aria-level="2">Before you start</div>
     <div class="row-list" style="margin-bottom:14px;">${prerequisites.map(pid=>{
       const pl = sk.IDX.lessonsById.get(pid);
       if(!pl) return "";
@@ -1596,7 +1600,7 @@ function openLessonDetail(lessonId){
 
     ${l.setup ? `<p style="font-size:14px; color:var(--ink-soft); margin-bottom:16px;"><strong style="color:var(--ink);">Setup:</strong> ${sk.esc(l.setup)}</p>` : ""}
 
-    <div class="section-label">Let's practise</div>
+    <div class="section-label" role="heading" aria-level="2">Let's practise</div>
     <div class="card">${steps.map((s,i)=>`<div class="step-item"><div class="step-num-lg" style="background:var(${catVar});">${i+1}</div><div style="padding-top:4px;">${sk.esc(s)}${(l.media&&l.media.steps&&l.media.steps[i])?renderMediaBlock(l.media.steps[i]):""}</div></div>`).join("")}</div>
 
     <button class="btn btn-primary btn-block" id="startBtn" style="margin-bottom:28px;">▶ Start training</button>
@@ -1609,35 +1613,35 @@ function openLessonDetail(lessonId){
 
     <p style="color:var(--ink-soft); font-size:13.5px;"><strong>Why it matters:</strong> ${sk.esc(l.why_it_matters)}</p>
 
-    <div class="section-label">Success criteria</div>
+    <div class="section-label" role="heading" aria-level="2">Success criteria</div>
     <p style="font-size:14.5px;">${sk.esc(l.success_criteria)}</p>
 
-    ${mistakes.length ? `<div class="section-label">Common mistakes</div>
+    ${mistakes.length ? `<div class="section-label" role="heading" aria-level="2">Common mistakes</div>
     <div style="margin-bottom:16px;">${mistakes.map(m=>`<div class="checklist-item"><span class="dot"></span>${sk.esc(m)}</div>`).join("")}</div>` : ""}
 
-    <div class="section-label">If it's too hard</div>
+    <div class="section-label" role="heading" aria-level="2">If it's too hard</div>
     <p style="font-size:14px; color:var(--ink-soft);">${regression.join(" · ")}</p>
-    <div class="section-label">Ready for more?</div>
+    <div class="section-label" role="heading" aria-level="2">Ready for more?</div>
     <p style="font-size:14px; color:var(--ink-soft);">${progression.join(" · ")}</p>
 
-    ${l.real_world_application ? `<div class="section-label">Using it in real life</div>
+    ${l.real_world_application ? `<div class="section-label" role="heading" aria-level="2">Using it in real life</div>
     <p style="font-size:14px; color:var(--ink-soft);">${sk.esc(l.real_world_application)}</p>` : ""}
 
     ${l.professional_help_if ? `<div class="banner banner-amber"><span class="glyph">🩺</span><div><strong>Get professional help if:</strong><br>${sk.esc(l.professional_help_if)}</div></div>` : ""}
 
-    ${related.length ? `<div class="section-label">Related lessons</div>
+    ${related.length ? `<div class="section-label" role="heading" aria-level="2">Related lessons</div>
     <div>${related.map(id=>{
       const rl = sk.IDX.lessonsById.get(id);
       return rl ? `<span class="link-pill" data-id="${id}">${sk.esc(rl.title)}</span>` : "";
     }).join("")}</div>` : ""}
 
-    ${progress ? `<div class="section-label">Your progress</div>
+    ${progress ? `<div class="section-label" role="heading" aria-level="2">Your progress</div>
     <p style="font-size:13.5px; color:var(--ink-soft);">
       Trained ${progress.timesCompleted}× · last ${sk.daysAgo(progress.lastPracticed)===0?"today":sk.daysAgo(progress.lastPracticed)+"d ago"} · avg success ${Math.round(progress.avgSuccess*100)}%
     </p>` : ""}
 
     ${dog ? `
-    <div class="section-label">Your notes</div>
+    <div class="section-label" role="heading" aria-level="2">Your notes</div>
     <div class="card">
       <textarea id="lessonNoteInput" placeholder="e.g. worked better after a short walk first, struggles near the front door…" style="margin-bottom:8px;">${sk.esc(sk.getLessonNote(dog.id, lessonId))}</textarea>
       <button class="btn btn-secondary btn-sm" id="saveNoteBtn">Save note</button>
@@ -1696,7 +1700,7 @@ function renderSessionScreen(){
       </div>
     </div>
 
-    <div class="section-label">Reminder</div>
+    <div class="section-label" role="heading" aria-level="2">Reminder</div>
     <div class="checklist-item"><span class="dot"></span>${sk.esc(l.success_criteria)}</div>
 
     <button class="btn btn-secondary btn-block" id="finishBtn" style="margin-top:16px;">Finish session</button>
@@ -1791,7 +1795,7 @@ function renderFeedbackStep(){
       <div style="font-size:28px; font-family:var(--font-display); font-weight:700;">${succ}/${total||0}</div>
       <div style="color:var(--ink-soft); font-size:13.5px;">successful repetitions (${Math.round(rate*100)}%)</div>
     </div>
-    <div class="section-label">How did ${sk.getCurrentDog().name} find it?</div>
+    <div class="section-label" role="heading" aria-level="2">How did ${sk.getCurrentDog().name} find it?</div>
     <div class="chip-group" id="feedbackChips">
       ${sk.ADAPTIVE_FEEDBACK.map(f=>`<button type="button" class="chip" data-val="${f}">${sk.FEEDBACK_DISPLAY[f]}</button>`).join("")}
     </div>
@@ -1976,7 +1980,7 @@ function renderBehaviours(container){
       const sevBadge = sev === "red"
         ? '<span style="color:var(--red); font-weight:700;">🔴 Safety-critical</span>'
         : sev === "amber"
-          ? '<span style="color:var(--ochre); font-weight:600;">🟡 Consider</span>'
+          ? '<span style="color:var(--ochre-text); font-weight:600;">🟡 Consider</span>'
           : "";
       return `<button class="row" data-id="${b.behaviour_id}">
         <div class="row-tab" style="background:var(--sky)"></div>
@@ -2024,21 +2028,21 @@ function openBehaviourDetail(id){
         }).filter(Boolean).join(" ")} Use management and consider professional guidance if any of this applies.</div>
       </div>` : ""}
 
-    <div class="section-label">Possible functions</div>
+    <div class="section-label" role="heading" aria-level="2">Possible functions</div>
     <p style="font-size:14.5px;">${sk.esc(b.possible_functions)}</p>
 
-    <div class="section-label">Management (do this now)</div>
+    <div class="section-label" role="heading" aria-level="2">Management (do this now)</div>
     <p style="font-size:14.5px;">${sk.esc(b.management)}</p>
 
     ${decisionTreeLesson ? `
-    <div class="section-label">Start with this assessment</div>
+    <div class="section-label" role="heading" aria-level="2">Start with this assessment</div>
     <button class="row" data-id="${decisionTreeLesson.lesson_id}" style="background:var(--canvas-raised); border:1px solid var(--line); border-radius:var(--radius-m); margin-bottom:4px;">
       <div class="row-tab" style="background:var(--ochre)"></div>
       <div class="row-body"><div class="row-title">${sk.esc(decisionTreeLesson.title)}</div><div class="row-meta">Figure out the right path before diving into lessons</div></div>
       <span class="row-chev">›</span>
     </button>` : ""}
 
-    <div class="section-label">Suggested training route</div>
+    <div class="section-label" role="heading" aria-level="2">Suggested training route</div>
     <p style="font-size:13px; color:var(--ink-soft);">${sk.esc(formatTrainingRoute(b.training_route))}</p>
     <div class="row-list">${routeLessons.map(l=>`
       <button class="row" data-id="${l.lesson_id}">
@@ -2127,7 +2131,7 @@ function renderSkills(container){
     const bySub = {};
     filtered.forEach(s=>{ (bySub[s.subcategory] = bySub[s.subcategory]||[]).push(s); });
     resultsEl.innerHTML = Object.keys(bySub).map(sub=>`
-      <div class="section-label">${sk.esc(sub)}</div>
+      <div class="section-label" role="heading" aria-level="2">${sk.esc(sub)}</div>
       <div class="row-list">
         ${bySub[sub].map(s=>{
           const state = sk.dogSkillState(dog.id, s.skill_id);
@@ -2157,7 +2161,7 @@ function openSkillDetail(skillId){
   const html = `
     <h3>${sk.esc(s.skill_name)}</h3>
     <p style="color:var(--ink-soft); font-size:14px;">${sk.esc(s.definition)}</p>
-    <div class="section-label">${sk.esc(dog.name)}'s current stage</div>
+    <div class="section-label" role="heading" aria-level="2">${sk.esc(dog.name)}'s current stage</div>
     <div class="chip-group">
       ${sk.SKILL_STATES.map(st=>`<button type="button" class="chip skillStateChip${st===state?' selected':''}" data-val="${st}" style="${st===state?'background:'+sk.STATE_COLOR[st]+';border-color:'+sk.STATE_COLOR[st]+';':''}">${st}</button>`).join("")}
     </div>
@@ -2199,7 +2203,7 @@ function renderMore(container){
   const currentTheme = (sk.DB.settings && sk.DB.settings.theme) || "auto";
   const voiceOn = sk.isVoiceEnabled();
   container.innerHTML = `
-    <div class="section-label">Dogs</div>
+    <div class="section-label" role="heading" aria-level="2">Dogs</div>
     <div class="row-list">
       ${sk.DB.dogs.map(d=>`
         <button class="row" data-dog="${d.id}">
@@ -2210,7 +2214,7 @@ function renderMore(container){
       <button class="row" id="addDogRow"><div class="avatar" style="background:var(--line); color:var(--ink-soft);">+</div><div class="row-body"><div class="row-title">Add another dog</div></div></button>
     </div>
 
-    <div class="section-label">Daily programmes</div>
+    <div class="section-label" role="heading" aria-level="2">Daily programmes</div>
     <div class="row-list">
       ${sk.KB.collections.daily_programmes.map(p=>`
         <button class="row" data-programme="${p.programme_id}">
@@ -2220,12 +2224,12 @@ function renderMore(container){
         </button>`).join("")}
     </div>
 
-    <div class="section-label">Troubleshoot</div>
+    <div class="section-label" role="heading" aria-level="2">Troubleshoot</div>
     <div class="row-list">
       <button class="row" id="troubleshootRow"><div class="row-tab" style="background:var(--red)"></div><div class="row-body"><div class="row-title">My dog is...</div><div class="row-meta">Answer a couple of questions to find the right starting point</div></div><span class="row-chev">›</span></button>
     </div>
 
-    <div class="section-label">Reference</div>
+    <div class="section-label" role="heading" aria-level="2">Reference</div>
     <div class="row-list">
       <button class="row" id="safetyRow"><div class="row-tab" style="background:var(--red)"></div><div class="row-body"><div class="row-title">Safety gates</div><div class="row-meta">${sk.KB.collections.safety_gates.length} situations that need extra care</div></div><span class="row-chev">›</span></button>
       <button class="row" id="mythsRow"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">Myths & realities</div><div class="row-meta">${sk.KB.collections.myths.length} common misconceptions</div></div><span class="row-chev">›</span></button>
@@ -2237,7 +2241,7 @@ function renderMore(container){
       <button class="row" id="mediaGalleryRow"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">Media gallery</div><div class="row-meta">Every lesson with a real photo, in one place</div></div><span class="row-chev">›</span></button>
     </div>
 
-    <div class="section-label">Appearance</div>
+    <div class="section-label" role="heading" aria-level="2">Appearance</div>
     <div class="card">
       <div class="chip-group" id="themeChips" style="margin-bottom:0;">
         ${[["light","☀️ Light"],["auto","🌓 Auto"],["dark","🌙 Dark"]].map(([val,label])=>
@@ -2247,27 +2251,27 @@ function renderMore(container){
       <p style="font-size:11.5px; color:var(--ink-soft); margin:8px 0 0;">Auto follows your device's setting.</p>
     </div>
 
-    <div class="section-label">Voice guidance</div>
+    <div class="section-label" role="heading" aria-level="2">Voice guidance</div>
     <div class="card">
       <div style="display:flex; align-items:center; gap:12px;">
         <div style="flex:1;">
           <div style="font-weight:600; font-size:14px;">Speak during training</div>
           <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">Hear step reminders and rep feedback out loud — useful when your hands are full.</div>
         </div>
-        <button type="button" id="voiceToggle" role="switch" aria-checked="${voiceOn}" style="flex:none; width:46px; height:27px; border-radius:14px; border:none; background:${voiceOn?'var(--forest)':'var(--line)'}; position:relative; cursor:pointer; padding:0;">
+        <button type="button" id="voiceToggle" role="switch" aria-checked="${voiceOn}" aria-label="Speak during training" style="flex:none; width:46px; height:27px; border-radius:14px; border:none; background:${voiceOn?'var(--forest)':'var(--line)'}; position:relative; cursor:pointer; padding:0;">
           <span style="position:absolute; top:2px; left:${voiceOn?'21px':'2px'}; width:23px; height:23px; border-radius:50%; background:#fff; transition:left 0.15s;"></span>
         </button>
       </div>
     </div>
 
-    <div class="section-label">Content check</div>
+    <div class="section-label" role="heading" aria-level="2">Content check</div>
     <div class="card">
       <p style="font-size:13px; color:var(--ink-soft); margin-bottom:10px;">Scans the training library for broken references, missing fields, and media issues — useful after adding new lesson content.</p>
       <button class="btn btn-secondary btn-block" id="integrityBtn">Run data check</button>
       <div id="integrityResults" style="margin-top:12px;"></div>
     </div>
 
-    <div class="section-label">Data</div>
+    <div class="section-label" role="heading" aria-level="2">Data</div>
     <div class="card">
       <p style="font-size:13px; color:var(--ink-soft); margin-bottom:10px;">${storageEstimateText()} · stored only on this device.</p>
       <button class="btn btn-secondary btn-block" id="exportBtn">Export backup (.json)</button>
@@ -2278,7 +2282,7 @@ function renderMore(container){
       <button class="btn btn-danger btn-block" id="resetBtn" style="margin-top:8px;">Reset all data</button>
     </div>
 
-    <div class="section-label">Sidekick</div>
+    <div class="section-label" role="heading" aria-level="2">Sidekick</div>
     <div class="row-list">
       <button class="row" id="aboutRow"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title">About Sidekick</div><div class="row-meta">Support, other apps, privacy & version</div></div><span class="row-chev">›</span></button>
     </div>
@@ -2380,7 +2384,7 @@ function openProgrammeDetail(id){
     <p style="color:var(--ink-soft); font-size:13.5px;">${p.duration_min} minutes · ${sk.esc(p.feedback)}</p>
     <div class="card">${steps.map((s,i)=>`<div class="step-item"><div class="step-num">${i+1}</div><div>${sk.esc(s)}</div></div>`).join("")}</div>
     ${lessons.length ? `
-      <div class="section-label">${isDynamic?"Chosen for "+sk.esc(dog.name)+" today":"Lessons in this programme"}</div>
+      <div class="section-label" role="heading" aria-level="2">${isDynamic?"Chosen for "+sk.esc(dog.name)+" today":"Lessons in this programme"}</div>
       <div class="row-list" style="margin-bottom:14px;">${lessons.map(l=>`
         <div class="row" style="cursor:default;">
           <div class="row-tab" style="background:var(${sk.getCategoryVar(l.category)})"></div>
@@ -2628,7 +2632,7 @@ function runTroubleshootNode(treeId, nodeId){
   sk.openModal(`
     <h3>${tree.icon} ${sk.esc(tree.title)}</h3>
     ${node.professional_help ? `<div class="banner banner-red" style="margin-top:10px;"><span class="glyph">⚠️</span><div>${sk.esc(node.summary)}</div></div>` : `<p style="font-size:14px; color:var(--ink-soft); margin:12px 0;">${sk.esc(node.summary)}</p>`}
-    <div class="section-label">Where to start</div>
+    <div class="section-label" role="heading" aria-level="2">Where to start</div>
     <div class="row-list">${relatedHtml}</div>
     <button class="btn btn-ghost btn-block" id="twRestart" style="margin-top:14px;">← Ask about something else</button>
   `);
@@ -2687,7 +2691,7 @@ function openMediaGallery(){
   sk.openModal(`
     <h3>Media gallery</h3>
     <p style="color:var(--ink-soft); font-size:13px; margin-bottom:14px;">${lessons.length} lesson${lessons.length===1?"":"s"} with a real photo, plus the ${bodyLang.length}-state body language guide. Tap any lesson to open it.</p>
-    <div class="section-label" style="margin-top:0;">Lessons</div>
+    <div class="section-label" role="heading" aria-level="2" style="margin-top:0;">Lessons</div>
     <div class="row-list">
       ${lessons.map(l=>{
         const stepCount = (l.media.steps||[]).length;
@@ -2701,7 +2705,7 @@ function openMediaGallery(){
         </button>`;
       }).join("")}
     </div>
-    ${bodyLang.length ? `<div class="section-label">Body language guide</div>
+    ${bodyLang.length ? `<div class="section-label" role="heading" aria-level="2">Body language guide</div>
     <div class="row-list" style="margin-bottom:14px;">
       ${bodyLang.map(s=>`<button class="row" data-gallery-guide="${sk.esc(s.state_id)}" style="padding:8px;">
         <img src="${sk.esc(s.image)}" alt="" loading="lazy" style="width:52px; height:52px; border-radius:10px; object-fit:cover; flex:none;">
@@ -2769,9 +2773,15 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "4.7.0";
+const APP_VERSION = "4.8.0";
 
 const CHANGELOG = [
+  { version: "4.8.0", notes: [
+    "Accessibility pass: added missing labels on the voice-guidance toggle and all form inputs (onboarding and add/edit dog), linked chip-group selections to their headings, added aria-current to the active tab, retrofitted heading semantics onto all 48 section headers so screen readers can navigate between them, and fixed a genuine color contrast failure on the amber \"Consider\" badge text",
+    "Verified rather than assumed several things were already solid: modal focus-trap, Escape-to-close, focus-visible outlines, and toast announcements all checked and confirmed working correctly",
+    "Replaced the outdated circular \"S\" icon in the top bar with the rounded-square shape matching the new logo, and removed an orphaned, unused copy of the old circular icon",
+    "Fixed the Home screen's full logo appearing smaller than intended — the source image had built-in transparent padding eating into its own height budget; cropped it out and sized the logo up slightly for better presence",
+  ]},
   { version: "4.7.0", notes: [
     "Fixed a real bug: both light and dark logo versions were showing at once on Home in dark mode — same root cause as an earlier bug (an inline style beating the CSS rule that hides the wrong one), just in a new spot",
     "Fixed unreadable black stat numbers (developing/streak/progress) on Home in dark mode — they were inheriting the browser's default black button text color instead of the app's theme color",
@@ -3042,14 +3052,6 @@ const CHANGELOG = [
   ]},
 ];
 
-function pawLogoSVG(size){
-  return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" aria-hidden="true">
-    <circle cx="50" cy="50" r="50" fill="var(--forest)"/>
-    <path d="M 66 33 C 66 22 34 22 34 38 C 34 54 66 46 66 62 C 66 78 34 78 34 67"
-          stroke="var(--canvas)" stroke-width="11" fill="none" stroke-linecap="round"/>
-  </svg>`;
-}
-
 // Excludes Woofz deliberately: the data's own evidence_type field already
 // classifies it as "Product/topic inspiration" / "Commercial educational
 // material", not welfare/training evidence — it's disclosed separately via
@@ -3090,13 +3092,13 @@ function renderAbout(container){
 
     ${reviewStatus ? `<div class="banner banner-amber"><span class="glyph">📋</span><div><strong>Content status:</strong> ${sk.esc(reviewStatus)}</div></div>` : ""}
 
-    ${kb.copyright_note ? `<div class="section-label">A note on content</div>
+    ${kb.copyright_note ? `<div class="section-label" role="heading" aria-level="2">A note on content</div>
     <p style="font-size:13px; color:var(--ink-soft);">${sk.esc(kb.copyright_note)}</p>` : ""}
 
-    ${kb.progression_note ? `<div class="section-label">A note on progression</div>
+    ${kb.progression_note ? `<div class="section-label" role="heading" aria-level="2">A note on progression</div>
     <p style="font-size:13px; color:var(--ink-soft);">${sk.esc(kb.progression_note)}</p>` : ""}
 
-    <div class="section-label">Evidence base</div>
+    <div class="section-label" role="heading" aria-level="2">Evidence base</div>
     <div class="card">
       <p style="font-size:13px; color:var(--ink-soft); margin-bottom:10px;">Sidekick's lessons and safety guidance draw on published welfare and training guidance from:</p>
       ${sourceOrgSummary().map(([org,count])=>`
@@ -3107,7 +3109,7 @@ function renderAbout(container){
       <p style="font-size:12px; color:var(--ink-soft); margin-top:10px; margin-bottom:0;">Individual citations, with what each finding does and doesn't mean, are in More → Evidence library.</p>
     </div>
 
-    <div class="section-label">More from Duffers</div>
+    <div class="section-label" role="heading" aria-level="2">More from Duffers</div>
     <div class="card">
       <h3 style="margin-bottom:4px;">🧭 Also logging your travels?</h3>
       <p style="font-size:13px; color:var(--ink-soft);">Waypoints is a personal travel log — everywhere you've been, and everywhere you're going. Same no-accounts, no-tracking approach.</p>
@@ -3124,7 +3126,7 @@ function renderAbout(container){
       <a href="https://dirtyduffers.github.io/Ninja-Hub/" target="_blank" rel="noopener" style="display:inline-block; background:#C08A2B; color:#fff; font-size:13px; font-weight:700; padding:9px 16px; border-radius:10px; text-decoration:none;">Open Ninja Hub ↗</a>
     </div>
 
-    <div class="section-label">Add to Home Screen</div>
+    <div class="section-label" role="heading" aria-level="2">Add to Home Screen</div>
     <div class="card">
       <div style="margin-bottom:10px;">
         <div style="font-size:13px; font-weight:700; margin-bottom:3px;">🍎 iPhone / iPad (Safari)</div>
@@ -3140,13 +3142,13 @@ function renderAbout(container){
       </div>
     </div>
 
-    <div class="section-label">Data & privacy</div>
+    <div class="section-label" role="heading" aria-level="2">Data & privacy</div>
     <div class="card">
       <p style="font-size:13px; margin-bottom:0;">Everything you enter — dog profiles, sessions, skill progress — stays on this device in your browser's local storage. Nothing is sent anywhere.</p>
       <p style="font-size:13px; margin:10px 0 0;"><strong>This means it doesn't sync between devices.</strong> Training on your phone and your tablet keeps two separate histories. To move to a new device or keep a backup, use More → Data → Export backup, then Import backup on the other device.</p>
     </div>
 
-    <div class="section-label">Author</div>
+    <div class="section-label" role="heading" aria-level="2">Author</div>
     <div class="card">
       <p style="font-size:13px; margin-bottom:0;">Created by <strong>Duffers</strong> — built for training with care, not for training data.</p>
     </div>
@@ -3510,7 +3512,7 @@ function renderProgress(container){
       <div style="font-size:12.5px; color:var(--ink-soft);">average success rate across all sessions</div>
     </div>
 
-    <div class="section-label">Last 8 weeks</div>
+    <div class="section-label" role="heading" aria-level="2">Last 8 weeks</div>
     <div class="card">
       <div style="display:flex; align-items:flex-end; gap:6px; height:100px;">
         ${weekly.map(w=>`
@@ -3523,7 +3525,7 @@ function renderProgress(container){
       </div>
     </div>
 
-    <div class="section-label">By category</div>
+    <div class="section-label" role="heading" aria-level="2">By category</div>
     <div class="card">
       ${categories.map(([cat,count])=>`
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
@@ -3533,7 +3535,7 @@ function renderProgress(container){
         </div>`).join("")}
     </div>
 
-    <div class="section-label">Session history</div>
+    <div class="section-label" role="heading" aria-level="2">Session history</div>
     <div id="sessionHistoryList"></div>
     <button class="btn btn-ghost btn-block" id="loadMoreSessions" style="display:none; margin-top:4px;">Show more</button>
   `;
