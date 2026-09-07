@@ -161,6 +161,7 @@ button{font-family:inherit;}
   padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center;
 }
 .topbar-logo:active{opacity:0.7;}
+#topbarLogoFull{width:auto; max-width:150px; border-radius:8px;}
 .topbar-actions{display:flex; gap:8px; align-items:center;}
 .icon-btn{
   width:36px;height:36px; border-radius:50%; border:1px solid var(--line);
@@ -417,11 +418,16 @@ textarea{resize:vertical; min-height:70px;}
               stroke="var(--canvas)" stroke-width="11" fill="none" stroke-linecap="round"/>
       </svg>
     </button>
-    <div style="flex:1; min-width:0;">
+    <button class="topbar-logo" id="topbarLogoFull" aria-label="Sidekick home" title="Home" style="display:none; padding:0;">
+      <img src="images/logo-lockup-light.png" alt="Sidekick" class="logo-lockup-light" style="height:30px; width:auto; display:block;">
+      <img src="images/logo-lockup-dark.png" alt="Sidekick" class="logo-lockup-dark" style="height:30px; width:auto;">
+    </button>
+    <div style="flex:1; min-width:0;" id="topbarTitleWrap">
       <h1 id="topbarTitle">Sidekick</h1>
       <div class="sub" id="topbarSub">Reward-based training</div>
     </div>
     <div class="topbar-actions" id="topbarActions"></div>
+    <button class="icon-btn" id="topbarThemeToggle" aria-label="Switch to dark mode" title="Toggle dark mode" style="flex:none;">🌙</button>
   </div>
 
   <!-- ===================== SCREENS ===================== -->

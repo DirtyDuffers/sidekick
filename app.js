@@ -65,6 +65,13 @@ function loadDB(){
 }
 function applyTheme(theme){
   document.body.dataset.theme = theme; // "light" | "dark" | "auto" — CSS handles all three
+  const btn = document.getElementById("topbarThemeToggle");
+  if(btn){
+    const isDark = theme === "dark" || (theme === "auto" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    btn.textContent = isDark ? "☀️" : "🌙";
+    btn.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
+    btn.title = isDark ? "Switch to light mode" : "Switch to dark mode";
+  }
 }
 function setTheme(theme){
   if(!DB.settings) DB.settings = {};
@@ -320,6 +327,10 @@ document.addEventListener("DOMContentLoaded", ()=>{
     if(window.__sk.currentScreen === "onboarding") return; // avoid wiping a half-filled form
     goScreen("home");
   });
+  document.getElementById("topbarLogoFull").addEventListener("click", ()=>{
+    if(window.__sk.currentScreen === "onboarding") return;
+    goScreen("home");
+  });
 });
 
 /* expose small internal API for other IIFE-scoped sections appended below */
@@ -346,6 +357,18 @@ async function boot(){
   DB = loadDB();
   ensureCurrentDog();
   applyTheme((DB.settings && DB.settings.theme) || "auto");
+  document.getElementById("topbarThemeToggle").addEventListener("click", ()=>{
+    const current = (DB.settings && DB.settings.theme) || "auto";
+    const isDarkNow = current === "dark" || (current === "auto" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    setTheme(isDarkNow ? "light" : "dark");
+  });
+  if(window.matchMedia){
+    // Keeps the quick-toggle icon honest if the OS theme changes while "Auto" is selected,
+    // since that case is otherwise handled purely by CSS with nothing to tell the JS side.
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ()=>{
+      if(((DB.settings && DB.settings.theme) || "auto") === "auto") applyTheme("auto");
+    });
+  }
   setTabbarVisible(false);
   document.getElementById("screens").innerHTML =
     '<div class="screen active"><div class="empty-state"><span class="glyph">🐾</span>Loading the training library…</div></div>';
@@ -712,10 +735,13 @@ window.__sk.openDogSwitcher = openDogSwitcher;
 (function(){
 const sk = window.__sk;
 
-function setTopbar(title, sub, actionsHTML){
+function setTopbar(title, sub, actionsHTML, useLogoLockup){
   document.getElementById("topbarTitle").textContent = title;
   document.getElementById("topbarSub").textContent = sub||"";
   document.getElementById("topbarActions").innerHTML = actionsHTML||"";
+  document.getElementById("topbarLogo").style.display = useLogoLockup ? "none" : "";
+  document.getElementById("topbarLogoFull").style.display = useLogoLockup ? "flex" : "none";
+  document.getElementById("topbarTitleWrap").style.display = useLogoLockup ? "none" : "";
 }
 
 // Categories that are owner education/reference/assessment content rather
@@ -873,7 +899,7 @@ function trainingStreak(dogId){
 function renderHome(container){
   const dog = sk.getCurrentDog();
   if(!dog){ sk.goScreen("onboarding"); return; }
-  setTopbar("Sidekick", "", `<button class="icon-btn" id="switchDogBtn" aria-label="Switch dog" style="padding:0; overflow:hidden;">${dog.photo?`<img src="${dog.photo}" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`:dog.emoji}</button>`);
+  setTopbar("Sidekick", "", `<button class="icon-btn" id="switchDogBtn" aria-label="Switch dog" style="padding:0; overflow:hidden;">${dog.photo?`<img src="${dog.photo}" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`:dog.emoji}</button>`, true);
 
   const sessionLessons = todaysSessionLessons(dog);
   const totalMin = sessionLessons.reduce((sum,l)=>sum+(l.session_length_min||5), 0);
@@ -2740,9 +2766,15 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "4.4.0";
+const APP_VERSION = "4.5.0";
 
 const CHANGELOG = [
+  { version: "4.5.0", notes: [
+    "Fixed the logo lockup being clipped at the bottom in both light and dark mode — replaced with correctly-bounded versions",
+    "Replaced all 6 Body Language Guide images with better-framed landscape versions that fit the 4:3 card crop cleanly, with nothing important trimmed",
+    "Added a dark/light mode toggle directly in the header on every screen — stays in sync with the full picker in Profile settings in both directions, and updates live if your device's theme changes while \"Auto\" is selected",
+    "Home now shows the full \"Sidekick\" logo lockup in the top-left instead of the small icon plus text — every other screen keeps its normal icon and page title",
+  ]},
   { version: "4.4.0", notes: [
     "Fixed a real navigation bug: tapping a specific state in Media Gallery's body-language list always opened the guide at the top entry regardless of which one you tapped — it now jumps to the exact one you selected",
     "Reordered the body language guide cards: title and status now appear above the image, with the detail list below — image no longer pushes the identifying info off-screen first",
