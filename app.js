@@ -927,10 +927,10 @@ function renderHome(container){
       <div style="border-radius:50%; box-shadow:0 4px 14px rgba(0,0,0,0.12);">${sk.dogAvatarHTML(dog, "lg")}</div>
       <h2 style="margin:10px 0 2px;">${sk.esc(dog.name)}</h2>
       <p style="color:var(--ink-soft); font-size:13px; margin:0 0 12px;">${greeting}${sk.DB.dogs.length>1?" 👋":""}</p>
-      <button id="journeyStatsRow" style="display:flex; gap:18px; background:none; border:none; padding:4px 10px; cursor:pointer;">
-        <div style="text-align:center;"><div style="font-size:15px; font-weight:700; font-family:var(--font-display);">🐾 ${developingCount}</div><div style="font-size:10.5px; color:var(--ink-soft);">developing</div></div>
-        <div style="text-align:center;"><div style="font-size:15px; font-weight:700; font-family:var(--font-display);">🔥 ${streak}</div><div style="font-size:10.5px; color:var(--ink-soft);">day streak</div></div>
-        <div style="text-align:center;"><div style="font-size:15px; font-weight:700; font-family:var(--font-display);">⭐ ${overallPct}%</div><div style="font-size:10.5px; color:var(--ink-soft);">progress</div></div>
+      <button id="journeyStatsRow" style="display:flex; gap:18px; background:none; border:none; padding:4px 10px; cursor:pointer; color:var(--ink);">
+        <div style="text-align:center;"><div style="font-size:15px; font-weight:700; font-family:var(--font-display); color:var(--ink);">🐾 ${developingCount}</div><div style="font-size:10.5px; color:var(--ink-soft);">developing</div></div>
+        <div style="text-align:center;"><div style="font-size:15px; font-weight:700; font-family:var(--font-display); color:var(--ink);">🔥 ${streak}</div><div style="font-size:10.5px; color:var(--ink-soft);">day streak</div></div>
+        <div style="text-align:center;"><div style="font-size:15px; font-weight:700; font-family:var(--font-display); color:var(--ink);">⭐ ${overallPct}%</div><div style="font-size:10.5px; color:var(--ink-soft);">progress</div></div>
       </button>
     </div>
 
@@ -1068,6 +1068,7 @@ window.__sk.recentStruggleNote = recentStruggleNote;
 window.__sk.overallProgressPercent = overallProgressPercent;
 window.__sk.longestStreakEver = longestStreakEver;
 window.__sk.totalLessonsCompleted = totalLessonsCompleted;
+window.__sk.skillSummary = skillSummary;
 window.__sk.trainingStreak = trainingStreak;
 window.__sk.recentSessions = recentSessions;
 })();
@@ -2272,7 +2273,8 @@ function renderMore(container){
       <button class="btn btn-secondary btn-block" id="exportBtn">Export backup (.json)</button>
       <button class="btn btn-ghost btn-block" id="importBtn" style="margin-top:8px;">Import backup</button>
       <input type="file" id="importFile" accept="application/json" style="display:none;">
-      <button class="btn btn-secondary btn-block" id="printLogBtn" style="margin-top:8px;">Print / export training log</button>
+      <button class="btn btn-secondary btn-block" id="reportBtn" style="margin-top:8px;">Training report (shareable summary)</button>
+      <button class="btn btn-secondary btn-block" id="printLogBtn" style="margin-top:8px;">Print / export full training log</button>
       <button class="btn btn-danger btn-block" id="resetBtn" style="margin-top:8px;">Reset all data</button>
     </div>
 
@@ -2313,6 +2315,7 @@ function renderMore(container){
   container.querySelector("#integrityBtn").addEventListener("click", ()=>runIntegrityCheckUI(container));
   container.querySelector("#exportBtn").addEventListener("click", exportBackup);
   container.querySelector("#printLogBtn").addEventListener("click", openPrintableLog);
+  container.querySelector("#reportBtn").addEventListener("click", openTrainingReport);
   container.querySelector("#importBtn").addEventListener("click", ()=>container.querySelector("#importFile").click());
   container.querySelector("#importFile").addEventListener("change", importBackup);
   container.querySelector("#resetBtn").addEventListener("click", confirmReset);
@@ -2766,9 +2769,19 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "4.5.0";
+const APP_VERSION = "4.7.0";
 
 const CHANGELOG = [
+  { version: "4.7.0", notes: [
+    "Fixed a real bug: both light and dark logo versions were showing at once on Home in dark mode — same root cause as an earlier bug (an inline style beating the CSS rule that hides the wrong one), just in a new spot",
+    "Fixed unreadable black stat numbers (developing/streak/progress) on Home in dark mode — they were inheriting the browser's default black button text color instead of the app's theme color",
+    "Updated the light-mode logo with better text contrast, per new artwork",
+  ]},
+  { version: "4.6.0", notes: [
+    "New: Training report (Profile → Data) — a curated, one-page shareable summary (overall progress, streaks, skills by stage, category progress, recent activity), distinct from the existing full session-by-session log",
+    "Built on the same calculations as the Training Journey view on Home, so the numbers always match between them",
+    "Print / Save as PDF works the same way as the existing training log export",
+  ]},
   { version: "4.5.0", notes: [
     "Fixed the logo lockup being clipped at the bottom in both light and dark mode — replaced with correctly-bounded versions",
     "Replaced all 6 Body Language Guide images with better-framed landscape versions that fit the 4:3 card crop cleanly, with nothing important trimmed",
@@ -3275,6 +3288,81 @@ function runIntegrityCheckUI(container){
 }
 
 /* ---------- Printable / exportable training log ---------- */
+// A curated, one-page shareable snapshot -- distinct from the exhaustive
+// session-by-session Printable Log below. Reuses the same calculations as
+// the Training Journey modal so the numbers are always consistent between them.
+function openTrainingReport(){
+  const dog = sk.getCurrentDog();
+  if(!dog){ sk.showToast("Add a dog first."); return; }
+  const sessions = sk.DB.sessions.filter(s=>s.dogId===dog.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const counts = sk.skillSummary(dog.id);
+  const skillTotal = sk.KB.collections.skills.length;
+  const overallPct = sk.overallProgressPercent(dog.id);
+  const streak = sk.trainingStreak(dog.id);
+  const longest = sk.longestStreakEver(dog.id);
+  const lessonsCompleted = sk.totalLessonsCompleted(dog.id);
+  const generatedDate = new Date().toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});
+
+  const categoryProgress = Object.entries(
+    sk.KB.collections.lessons.reduce((acc,l)=>{
+      const p = sk.DB.lessonProgress[dog.id]?.[l.lesson_id];
+      if(!acc[l.category]) acc[l.category] = {done:0,total:0};
+      acc[l.category].total++;
+      if(p) acc[l.category].done++;
+      return acc;
+    }, {})
+  ).filter(([,v])=>v.total>=4 && v.done>0).sort((a,b)=>(b[1].done/b[1].total)-(a[1].done/a[1].total));
+
+  const recent = sessions.slice(0, 8);
+
+  const overlay = document.createElement("div");
+  overlay.id = "trainingReportOverlay";
+  overlay.innerHTML = `
+    <div class="print-toolbar no-print">
+      <button class="btn btn-ghost" id="reportClose">← Back</button>
+      <button class="btn btn-primary" id="reportGo">🖨️ Print / Save as PDF</button>
+    </div>
+    <div class="print-page">
+      <h1>${sk.esc(dog.name)}'s Training Report</h1>
+      <p class="print-sub">${sk.esc(dog.breed || dog.ageStage)} · Generated ${generatedDate} · Sidekick v${APP_VERSION}</p>
+
+      <div class="report-stat-row">
+        <div class="report-stat"><div class="num">${overallPct}%</div><div class="lbl">Overall progress</div></div>
+        <div class="report-stat"><div class="num">${streak}</div><div class="lbl">Current streak</div></div>
+        <div class="report-stat"><div class="num">${longest}</div><div class="lbl">Longest streak</div></div>
+        <div class="report-stat"><div class="num">${lessonsCompleted}</div><div class="lbl">Lessons trained</div></div>
+      </div>
+
+      <h2>Skills by stage</h2>
+      <table class="print-table">
+        ${sk.SKILL_STATES.map(st=>`<tr><td>${sk.esc(st)}</td><td>${counts[st]||0}</td></tr>`).join("")}
+      </table>
+      <p style="font-size:11.5px; color:var(--ink-soft); margin-top:-4px;">${skillTotal} skills tracked in total</p>
+
+      ${categoryProgress.length ? `
+      <h2>Progress by category</h2>
+      <table class="print-table">
+        ${categoryProgress.map(([cat,v])=>`<tr><td>${sk.esc(cat)}</td><td>${Math.round(v.done/v.total*100)}% (${v.done}/${v.total})</td></tr>`).join("")}
+      </table>` : ""}
+
+      <h2>Recent activity</h2>
+      ${recent.length ? `
+      <table class="print-table">
+        <tr><th>Date</th><th>Lesson</th><th>Result</th></tr>
+        ${recent.map(s=>{
+          const l = sk.IDX.lessonsById.get(s.lessonId);
+          return `<tr><td>${sk.fmtDate(s.date)}</td><td>${sk.esc(l?l.title:"—")}</td><td>${s.successCount}/${s.repCount} (${Math.round(s.rate*100)}%)</td></tr>`;
+        }).join("")}
+      </table>` : `<p>No sessions logged yet.</p>`}
+
+      <p class="print-footer">Generated by Sidekick — a reward-based dog training companion. For a full session-by-session record, use "Print / export full training log" in Profile.</p>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById("reportClose").addEventListener("click", ()=>overlay.remove());
+  document.getElementById("reportGo").addEventListener("click", ()=>window.print());
+}
+
 function openPrintableLog(){
   const dog = sk.getCurrentDog();
   if(!dog){ sk.showToast("Add a dog first."); return; }

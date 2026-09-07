@@ -374,7 +374,7 @@ textarea{resize:vertical; min-height:70px;}
 }
 
 /* ---------- Printable training log ---------- */
-#printLogOverlay{
+#printLogOverlay, #trainingReportOverlay{
   position:fixed; inset:0; z-index:500; background:var(--canvas);
   overflow-y:auto;
 }
@@ -394,14 +394,20 @@ textarea{resize:vertical; min-height:70px;}
 .print-table th{font-size:11px; text-transform:uppercase; letter-spacing:0.03em; color:var(--ink-soft);}
 .print-table-wide{font-size:12px;}
 .print-footer{text-align:center; color:var(--ink-soft); font-size:11px; margin-top:30px;}
+.report-stat-row{display:flex; gap:10px; margin-top:14px;}
+.report-stat{flex:1; text-align:center; background:var(--canvas-raised); border-radius:12px; padding:12px 6px;}
+.report-stat .num{font-size:22px; font-weight:700; font-family:var(--font-display); color:var(--forest);}
+.report-stat .lbl{font-size:10.5px; color:var(--ink-soft); margin-top:2px;}
 
 @media print{
   #app, .toast, .modal-overlay{ display:none !important; }
   .no-print{ display:none !important; }
-  #printLogOverlay{ position:static; overflow:visible; background:#fff; }
+  #printLogOverlay, #trainingReportOverlay{ position:static; overflow:visible; background:#fff; }
   .print-page{ color:#000; max-width:none; }
   .print-page h2{ break-after:avoid; }
   .print-table tr{ break-inside:avoid; }
+  .report-stat{ border:1px solid #ccc; break-inside:avoid; }
+  .report-stat .num{ color:#000; }
   body{ padding-bottom:0; }
 }
 </style>
@@ -419,7 +425,7 @@ textarea{resize:vertical; min-height:70px;}
       </svg>
     </button>
     <button class="topbar-logo" id="topbarLogoFull" aria-label="Sidekick home" title="Home" style="display:none; padding:0;">
-      <img src="images/logo-lockup-light.png" alt="Sidekick" class="logo-lockup-light" style="height:30px; width:auto; display:block;">
+      <img src="images/logo-lockup-light.png" alt="Sidekick" class="logo-lockup-light" style="height:30px; width:auto;">
       <img src="images/logo-lockup-dark.png" alt="Sidekick" class="logo-lockup-dark" style="height:30px; width:auto;">
     </button>
     <div style="flex:1; min-width:0;" id="topbarTitleWrap">
