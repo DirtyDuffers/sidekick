@@ -72,6 +72,29 @@ function setTheme(theme){
   saveDB();
   applyTheme(theme);
 }
+function isVoiceEnabled(){
+  return !!(DB.settings && DB.settings.voiceGuidance);
+}
+function setVoiceEnabled(on){
+  if(!DB.settings) DB.settings = {};
+  DB.settings.voiceGuidance = on;
+  saveDB();
+}
+// Speaks a short phrase aloud during a session, for the exact moment hands
+// are full (treat, lead) and eyes are on the dog, not the phone. Silently
+// does nothing if the setting is off or the browser has no speech support —
+// this is a convenience layer, never something the app depends on.
+function speak(text){
+  if(!isVoiceEnabled()) return;
+  if(!("speechSynthesis" in window)) return;
+  try{
+    window.speechSynthesis.cancel(); // don't let phrases queue up and lag behind real reps
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05;
+    u.volume = 1;
+    window.speechSynthesis.speak(u);
+  }catch(e){ /* speech is a nice-to-have, never worth surfacing an error for */ }
+}
 function saveDB(){
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
@@ -308,6 +331,7 @@ window.__sk = {
   getCurrentDog, ensureCurrentDog, dogSkillState, setDogSkillState, dogLessonProgress,
   isFavourite, toggleFavourite, getLessonNote, setLessonNote,
   uid, esc, fmtDate, daysAgo, showToast, openModal, closeModal, setTheme,
+  isVoiceEnabled, setVoiceEnabled, speak,
   goScreen, render, SCREEN_RENDERERS, saveDB, loadKnowledgeBase, loadDB, setTabbarVisible
 };
 
@@ -790,6 +814,40 @@ function skillSummary(dogId){
   return counts;
 }
 
+// A single "how far along overall" number, built from the same 5 skill
+// states already tracked everywhere else in the app -- no new data needed.
+// Acquiring counts for a little, Life-ready counts for full credit.
+const SKILL_STATE_WEIGHT = {"Acquiring":0, "Developing":0.25, "Reliable":0.5, "Generalising":0.75, "Life-ready":1};
+function overallProgressPercent(dogId){
+  const skills = sk.KB.collections.skills;
+  if(!skills.length) return 0;
+  const total = skills.reduce((sum,sObj)=>{
+    const st = sk.dogSkillState(dogId, sObj.skill_id);
+    return sum + (SKILL_STATE_WEIGHT[st]||0);
+  }, 0);
+  return Math.round(total / skills.length * 100);
+}
+
+// Longest streak ever achieved, not just the current one -- distinct,
+// motivating milestone info the current-streak number alone doesn't give.
+function longestStreakEver(dogId){
+  const dates = [...new Set(sk.DB.sessions.filter(s=>s.dogId===dogId).map(s=>s.date.slice(0,10)))].sort();
+  if(!dates.length) return 0;
+  let longest = 1, current = 1;
+  for(let i=1;i<dates.length;i++){
+    const prev = new Date(dates[i-1]), cur = new Date(dates[i]);
+    const diffDays = Math.round((cur-prev)/86400000);
+    if(diffDays===1){ current++; longest = Math.max(longest,current); }
+    else current = 1;
+  }
+  return longest;
+}
+
+function totalLessonsCompleted(dogId){
+  const progress = sk.DB.lessonProgress[dogId] || {};
+  return Object.keys(progress).length;
+}
+
 function recentSessions(dogId, n){
   return sk.DB.sessions.filter(s=>s.dogId===dogId).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,n||3);
 }
@@ -816,6 +874,8 @@ function renderHome(container){
   const totalMin = sessionLessons.reduce((sum,l)=>sum+(l.session_length_min||5), 0);
   const counts = skillSummary(dog.id);
   const streak = trainingStreak(dog.id);
+  const overallPct = overallProgressPercent(dog.id);
+  const developingCount = counts["Developing"]||0;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const skillTotal = sk.KB.collections.skills.length;
@@ -835,7 +895,12 @@ function renderHome(container){
     <div style="display:flex; flex-direction:column; align-items:center; padding:8px 0 18px;">
       <div style="border-radius:50%; box-shadow:0 4px 14px rgba(0,0,0,0.12);">${sk.dogAvatarHTML(dog, "lg")}</div>
       <h2 style="margin:10px 0 2px;">${sk.esc(dog.name)}</h2>
-      <p style="color:var(--ink-soft); font-size:13px; margin:0;">${greeting}${sk.DB.dogs.length>1?" 👋":""}</p>
+      <p style="color:var(--ink-soft); font-size:13px; margin:0 0 12px;">${greeting}${sk.DB.dogs.length>1?" 👋":""}</p>
+      <button id="journeyStatsRow" style="display:flex; gap:18px; background:none; border:none; padding:4px 10px; cursor:pointer;">
+        <div style="text-align:center;"><div style="font-size:15px; font-weight:700; font-family:var(--font-display);">🐾 ${developingCount}</div><div style="font-size:10.5px; color:var(--ink-soft);">developing</div></div>
+        <div style="text-align:center;"><div style="font-size:15px; font-weight:700; font-family:var(--font-display);">🔥 ${streak}</div><div style="font-size:10.5px; color:var(--ink-soft);">day streak</div></div>
+        <div style="text-align:center;"><div style="font-size:15px; font-weight:700; font-family:var(--font-display);">⭐ ${overallPct}%</div><div style="font-size:10.5px; color:var(--ink-soft);">progress</div></div>
+      </button>
     </div>
 
     ${struggleNote ? `<p style="font-size:12.5px; color:var(--ink-soft); text-align:center; margin:0 8px 12px; line-height:1.5;">🧠 ${struggleNote}</p>` : ""}
@@ -855,7 +920,7 @@ function renderHome(container){
       <button class="btn btn-ghost btn-block" style="margin-top:8px;" id="startQuickSession">⏱ Only have ${sessionLessons[0].session_length_min||5} minutes?</button>
     </div>
 
-    ${streak>0 ? `<p style="text-align:center; font-size:13px; color:var(--ink-soft); margin:10px 0 4px;">🔥 ${streak} day training streak</p>` : ""}
+    <div style="height:6px;"></div>
 
     <div class="section-label">How can we help?</div>
     <div class="row-list">
@@ -893,10 +958,75 @@ function renderHome(container){
     sk.startAdHocSession(`Quick ${quickLesson.session_length_min||5}-minute session`, [quickLesson]);
   });
   document.getElementById("switchDogBtn").addEventListener("click", sk.openDogSwitcher);
+  container.querySelector("#journeyStatsRow").addEventListener("click", ()=>openTrainingJourney(dog));
   container.querySelector("#quickWhatTrain").addEventListener("click", ()=>sk.goScreen("lessons"));
   container.querySelector("#quickBehaviour").addEventListener("click", sk.openTroubleshootPicker);
   container.querySelector("#quickBrowse").addEventListener("click", ()=>sk.goScreen("lessons"));
   container.querySelector("#seeProgress").addEventListener("click", (e)=>{ e.preventDefault(); sk.goScreen("progress"); });
+}
+
+// The dog's overall training journey -- pulls together stats that already
+// exist scattered across Home and Progress into one motivating summary,
+// rather than a new tracking system.
+function openTrainingJourney(dog){
+  const counts = skillSummary(dog.id);
+  const skillTotal = sk.KB.collections.skills.length;
+  const overallPct = overallProgressPercent(dog.id);
+  const streak = trainingStreak(dog.id);
+  const longest = longestStreakEver(dog.id);
+  const lessonsCompleted = totalLessonsCompleted(dog.id);
+
+  const categoryProgress = Object.entries(
+    sk.KB.collections.lessons.reduce((acc,l)=>{
+      const p = sk.DB.lessonProgress[dog.id]?.[l.lesson_id];
+      if(!acc[l.category]) acc[l.category] = {done:0,total:0};
+      acc[l.category].total++;
+      if(p) acc[l.category].done++;
+      return acc;
+    }, {})
+  ).filter(([,v])=>v.total>=4 && v.done>0).sort((a,b)=>(b[1].done/b[1].total)-(a[1].done/a[1].total));
+
+  sk.openModal(`
+    <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:6px;">
+      ${sk.dogAvatarHTML(dog, "lg")}
+      <h3 style="margin:10px 0 0;">${sk.esc(dog.name)}'s journey</h3>
+    </div>
+
+    <div class="card" style="text-align:center;">
+      <div style="font-size:40px; font-weight:700; font-family:var(--font-display); color:var(--forest);">${overallPct}%</div>
+      <div style="font-size:12.5px; color:var(--ink-soft);">overall progress across all tracked skills</div>
+    </div>
+
+    <div class="stat-grid" style="margin-bottom:14px;">
+      <div class="stat-box"><div class="num">${lessonsCompleted}</div><div class="lbl">Lessons trained</div></div>
+      <div class="stat-box"><div class="num">🔥 ${streak}</div><div class="lbl">Current streak</div></div>
+      <div class="stat-box"><div class="num">${longest}</div><div class="lbl">Longest streak</div></div>
+    </div>
+
+    <div class="section-label" style="margin-top:0;">Skills by stage</div>
+    <div class="card">
+      ${sk.SKILL_STATES.map(st=>`
+        <div style="display:flex; align-items:center; gap:10px; padding:5px 0;">
+          <span style="width:9px; height:9px; border-radius:50%; background:${sk.STATE_COLOR[st]}; flex:none;"></span>
+          <div style="flex:1; font-size:13.5px;">${sk.esc(st)}</div>
+          <div style="font-size:13.5px; font-weight:700;">${counts[st]||0}</div>
+        </div>
+      `).join("")}
+      <div style="display:flex; justify-content:flex-end; margin-top:6px; padding-top:8px; border-top:1px solid var(--line); font-size:11.5px; color:var(--ink-soft);">
+        ${skillTotal} skills tracked in total
+      </div>
+    </div>
+
+    <div class="section-label">Progress by category</div>
+    <div class="card">
+      ${categoryProgress.length ? categoryProgress.map(([cat,v])=>`
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+          <div style="width:130px; font-size:11.5px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${sk.esc(cat)}</div>
+          <div class="progress-track" style="flex:1;"><div class="progress-fill" style="width:${Math.round(v.done/v.total*100)}%; background:var(${sk.getCategoryVar(cat)})"></div></div>
+          <div style="width:34px; text-align:right; font-size:12px; font-weight:700;">${Math.round(v.done/v.total*100)}%</div>
+        </div>`).join("") : `<p style="font-size:13px; color:var(--ink-soft); margin:0;">Complete a few lessons to see progress by category here.</p>`}
+    </div>
+  `);
 }
 
 sk.SCREEN_RENDERERS.home = renderHome;
@@ -904,6 +1034,9 @@ window.__sk.setTopbar = setTopbar;
 window.__sk.suggestedLesson = suggestedLesson;
 window.__sk.todaysSessionLessons = todaysSessionLessons;
 window.__sk.recentStruggleNote = recentStruggleNote;
+window.__sk.overallProgressPercent = overallProgressPercent;
+window.__sk.longestStreakEver = longestStreakEver;
+window.__sk.totalLessonsCompleted = totalLessonsCompleted;
 window.__sk.trainingStreak = trainingStreak;
 window.__sk.recentSessions = recentSessions;
 })();
@@ -1537,6 +1670,8 @@ function renderSessionScreen(){
     <button class="btn btn-secondary btn-block" id="finishBtn" style="margin-top:16px;">Finish session</button>
   </div>`;
 
+  sk.speak(`Starting ${l.title}. Remember: ${l.success_criteria}`);
+
   function paint(){
     const total = session.reps.length;
     const succ = session.reps.filter(r=>r).length;
@@ -1547,9 +1682,13 @@ function renderSessionScreen(){
       ? `successful${total>=3?" · 🔥 "+pct+"% success rate":""}`
       : "successful, 0 so far";
   }
-  container.querySelector("#repSuccess").addEventListener("click", ()=>{ session.reps.push(true); paint(); });
-  container.querySelector("#repMiss").addEventListener("click", ()=>{ session.reps.push(false); paint(); });
-  container.querySelector("#finishBtn").addEventListener("click", renderFeedbackStep);
+  container.querySelector("#repSuccess").addEventListener("click", ()=>{ session.reps.push(true); paint(); sk.speak("Yes"); });
+  container.querySelector("#repMiss").addEventListener("click", ()=>{ session.reps.push(false); paint(); sk.speak("Okay, next one"); });
+  container.querySelector("#finishBtn").addEventListener("click", ()=>{
+    const succ = session.reps.filter(r=>r).length;
+    sk.speak(`Session finished. ${succ} out of ${session.reps.length} successful.`);
+    renderFeedbackStep();
+  });
   document.getElementById("endBtn").addEventListener("click", ()=>{
     sk.setActiveSession(null);
     openLessonDetail(l.lesson_id);
@@ -2026,6 +2165,7 @@ function renderMore(container){
   sk.setTopbar("Profile", "Dog, safety & data", "");
   const dog = sk.getCurrentDog();
   const currentTheme = (sk.DB.settings && sk.DB.settings.theme) || "auto";
+  const voiceOn = sk.isVoiceEnabled();
   container.innerHTML = `
     <div class="section-label">Dogs</div>
     <div class="row-list">
@@ -2075,6 +2215,19 @@ function renderMore(container){
       <p style="font-size:11.5px; color:var(--ink-soft); margin:8px 0 0;">Auto follows your device's setting.</p>
     </div>
 
+    <div class="section-label">Voice guidance</div>
+    <div class="card">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div style="flex:1;">
+          <div style="font-weight:600; font-size:14px;">Speak during training</div>
+          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">Hear step reminders and rep feedback out loud — useful when your hands are full.</div>
+        </div>
+        <button type="button" id="voiceToggle" role="switch" aria-checked="${voiceOn}" style="flex:none; width:46px; height:27px; border-radius:14px; border:none; background:${voiceOn?'var(--forest)':'var(--line)'}; position:relative; cursor:pointer; padding:0;">
+          <span style="position:absolute; top:2px; left:${voiceOn?'21px':'2px'}; width:23px; height:23px; border-radius:50%; background:#fff; transition:left 0.15s;"></span>
+        </button>
+      </div>
+    </div>
+
     <div class="section-label">Content check</div>
     <div class="card">
       <p style="font-size:13px; color:var(--ink-soft); margin-bottom:10px;">Scans the training library for broken references, missing fields, and media issues — useful after adding new lesson content.</p>
@@ -2119,6 +2272,12 @@ function renderMore(container){
     container.querySelectorAll("#themeChips .chip").forEach(c=>c.classList.remove("selected"));
     b.classList.add("selected");
     sk.setTheme(b.dataset.val);
+  });
+  container.querySelector("#voiceToggle").addEventListener("click", ()=>{
+    const now = !sk.isVoiceEnabled();
+    sk.setVoiceEnabled(now);
+    renderMore(container); // repaint so the switch position and aria-checked update
+    if(now) sk.speak("Voice guidance on");
   });
   container.querySelector("#integrityBtn").addEventListener("click", ()=>runIntegrityCheckUI(container));
   container.querySelector("#exportBtn").addEventListener("click", exportBackup);
@@ -2251,13 +2410,14 @@ function renderProgrammeBlock(){
       ${prog.index === prog.lessons.length-1 ? "Finish programme" : "Next block"}
     </button>
   </div>`;
+  sk.speak(`Block ${prog.index+1} of ${prog.lessons.length}: ${l.title}.`);
   function paint(){
     const succ = reps.filter(r=>r).length;
     container.querySelector("#repCounter").textContent = reps.length;
     container.querySelector("#repBreakdown").textContent = succ+" successful";
   }
-  container.querySelector("#repSuccess").addEventListener("click", ()=>{ reps.push(true); paint(); });
-  container.querySelector("#repMiss").addEventListener("click", ()=>{ reps.push(false); paint(); });
+  container.querySelector("#repSuccess").addEventListener("click", ()=>{ reps.push(true); paint(); sk.speak("Yes"); });
+  container.querySelector("#repMiss").addEventListener("click", ()=>{ reps.push(false); paint(); sk.speak("Okay, next one"); });
   container.querySelector("#nextBlockBtn").addEventListener("click", ()=>{
     prog.blockResults.push({ lessonId: l.lesson_id, reps: reps.slice() });
     if(prog.index === prog.lessons.length-1){
@@ -2571,9 +2731,51 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "3.16.0";
+const APP_VERSION = "4.2.0";
 
 const CHANGELOG = [
+  { version: "4.2.0", notes: [
+    "Retrieve now has real photos — the one mechanic that had genuinely zero coverage is closed out, across all 3 Retrieve/Carrying/Toy-clean-up lessons",
+    "19 more lessons given real photo sequences: marker word, chin rest duration and handling, hand target from a distance, redirecting puppy mouthing, food puzzles, the \"this way\" cue indoors and in the garden, drop during play, rewarding independent chewing and soft body language, greeting at the doorway, recognising toileting signals, calm exposure to unfamiliar people, recall in a new location, and generalising calmness",
+    "Found a genuine content-organisation surprise while reviewing: two composites labelled for other lessons contained retrieve content instead, and one image better suited a different lesson (\"rewarding independent chewing\") than originally planned — caught by viewing every panel before mapping, not assuming from filenames",
+    "71 lessons now have a real photo",
+  ]},
+  { version: "4.1.0", notes: [
+    "New: Voice guidance (Profile → Voice guidance) — when turned on, Sidekick speaks the session reminder aloud at the start, a quick \"Yes\" or \"Okay, next one\" after each rep, and a wrap-up when you finish — useful when your hands are full with a treat and a lead",
+    "Works in both single-lesson sessions and the daily-programme block runner",
+    "Off by default, silent if your browser doesn't support speech, and never blocks or slows anything down if it fails — this is a convenience layer only",
+  ]},
+  { version: "4.0.0", notes: [
+    "New: Training Journey — the dog's photo on Home now has a tappable stats row (skills developing, streak, overall progress) leading to a full journey view: overall progress, lessons trained, current and longest streak, skills by stage, and progress by category",
+    "This was the original vision from the very first design review, finally built — every number was already tracked somewhere in the app, this just brings it together in one motivating place instead of scattering it",
+    "Fixed a real design flaw caught during testing: the overall-progress percentage started every dog at 20% before any training at all, since the default \"Acquiring\" state was carrying positive weight — a completely untrained dog now correctly starts at 0%",
+  ]},
+  { version: "3.21.0", notes: [
+    "9 more flagship sequences added: Redirect to approved chew, Chin rest foundation, first capturing session, Looking at the handler's hand, Four paws on floor when greeting, first shaping session, Toilet schedule foundation, Emergency U-turn, and a corrected Name response",
+    "Name response's image set was replaced entirely — the previous single photo is now a full 3-image sequence, and a mismatched dog breed in an earlier upload was caught and swapped for the correct one before shipping",
+    "Every single diagram type in the library now has at least its flagship lesson covered with a real photo — 51 lessons total",
+  ]},
+  { version: "3.20.0", notes: [
+    "Added 5 more flagship sequences in one batch: Approaching the harness, Pairing a novel object with reward, Step away and return, Building a reliable drop cue, and Basic food scatter",
+    "Verified every step count against the actual lesson text before applying media this time — all 5 matched exactly, zero integrity warnings",
+    "43 lessons now have a real photo",
+  ]},
+  { version: "3.19.0", notes: [
+    "Added Leave It Fundamentals — \"Leave it: closed hand\" now shows the full real photo sequence (present the fist, investigate, disengage, reward from the other hand)",
+    "Double-checked the step count against the lesson text before applying this time (5 steps, 5 images) — no integrity warnings this round",
+    "38 lessons now have a real photo",
+  ]},
+  { version: "3.18.0", notes: [
+    "Added Settle & Calm Mat Fundamentals and Threshold Distance Fundamentals — the two flagship lessons for the two highest-usage mechanics in the whole library (\"Introducing a calm mat\" and \"Finding the working threshold distance\") now show full real photo sequences",
+    "Fixed two off-by-one mismatches caught by the integrity checker before shipping: both lessons have 6 steps but were only given 5 step images, meaning the final step in each would have silently shown no image",
+    "One image (dog being walked away from a trigger) was originally left unused — moved it to \"Increasing trigger distance when needed,\" which is exactly what it shows",
+    "37 lessons now have a real photo",
+  ]},
+  { version: "3.17.0", notes: [
+    "Added Lure & Fade Fundamentals and Loose-Lead Fundamentals — both flagship lessons (\"Your dog's first lure-and-fade session\" and \"Stop when the lead tightens\") now show a full real photo step sequence, same treatment as the marker-timing lesson",
+    "These two mechanics cover 51 lessons between them, the two largest remaining gaps that had no real photos at all",
+    "35 lessons now have a real photo overall",
+  ]},
   { version: "3.16.0", notes: [
     "Added the Recall in Action, Wait & Release, and Settle & Calm sets — 12 more real images, all mapped to specific lessons",
     "Caught and avoided a real mismatch before shipping: one settle image showed an active hand cue, but the lesson I'd initially picked (\"Capturing calm, with no cue at all\") is specifically about NOT cueing — moved it to a more fitting lesson instead",
