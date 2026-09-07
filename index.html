@@ -102,6 +102,16 @@ body[data-theme="dark"]{
   }
 }
 
+/* Logo lockup — swaps between light/dark-background versions the same way
+   the color tokens above do, so it's never the wrong-contrast image. */
+.logo-lockup-dark{display:none;}
+body[data-theme="dark"] .logo-lockup-light{display:none;}
+body[data-theme="dark"] .logo-lockup-dark{display:inline-block;}
+@media (prefers-color-scheme: dark){
+  body[data-theme="auto"] .logo-lockup-light{display:none;}
+  body[data-theme="auto"] .logo-lockup-dark{display:inline-block;}
+}
+
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
 body{

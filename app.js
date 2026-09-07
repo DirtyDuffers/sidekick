@@ -202,6 +202,11 @@ function setLessonNote(dogId, lessonId, text){
 
 /* ---------------- Utility ---------------- */
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function logoLockupHTML(maxWidth){
+  const w = maxWidth || 180;
+  return `<img src="images/logo-lockup-light.png" alt="Sidekick" class="logo-lockup-light" style="max-width:${w}px; width:100%; height:auto;">
+    <img src="images/logo-lockup-dark.png" alt="Sidekick" class="logo-lockup-dark" style="max-width:${w}px; width:100%; height:auto;">`;
+}
 function esc(str){
   if(str===undefined||str===null) return "";
   return String(str).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
@@ -330,7 +335,7 @@ window.__sk = {
   splitPipe, splitSemi, getCategoryVar, getCategoryIcon,
   getCurrentDog, ensureCurrentDog, dogSkillState, setDogSkillState, dogLessonProgress,
   isFavourite, toggleFavourite, getLessonNote, setLessonNote,
-  uid, esc, fmtDate, daysAgo, showToast, openModal, closeModal, setTheme,
+  uid, esc, fmtDate, daysAgo, showToast, openModal, closeModal, setTheme, logoLockupHTML,
   isVoiceEnabled, setVoiceEnabled, speak,
   goScreen, render, SCREEN_RENDERERS, saveDB, loadKnowledgeBase, loadDB, setTabbarVisible
 };
@@ -441,8 +446,7 @@ function renderOnboarding(container){
   container.innerHTML = `
     <div style="padding-top:8px;">
       <div style="text-align:center; margin-bottom:24px;">
-        <div style="font-size:44px; margin-bottom:6px;">🐾</div>
-        <h1 style="font-size:24px;">Welcome to Sidekick</h1>
+        <div style="margin-bottom:10px;">${sk.logoLockupHTML(200)}</div>
         <p style="color:var(--ink-soft); font-size:14.5px;">A calm, reward-based training companion.<br>Let's set up your dog's profile.</p>
       </div>
       <form id="onboardForm">
@@ -2731,9 +2735,15 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "4.2.0";
+const APP_VERSION = "4.3.0";
 
 const CHANGELOG = [
+  { version: "4.3.0", notes: [
+    "Added the full \"Sidekick\" logo lockup (icon + wordmark) to the onboarding welcome screen and the About page, replacing a generic paw emoji and a separate icon-plus-heading combo",
+    "Correctly switches between light and dark-background versions depending on your theme setting, including \"Auto\" mode",
+    "Kept the existing plain forest-green icon (matching the app icon and top bar) rather than the ochre/sage colour variants also provided, to stay visually consistent with branding already used everywhere else in the app",
+    "Fixed a real bug caught in testing: an inline style was overriding the dark-mode CSS rule, so both the light and dark logo images were briefly showing at once in dark mode",
+  ]},
   { version: "4.2.0", notes: [
     "Retrieve now has real photos — the one mechanic that had genuinely zero coverage is closed out, across all 3 Retrieve/Carrying/Toy-clean-up lessons",
     "19 more lessons given real photo sequences: marker word, chin rest duration and handling, hand target from a distance, redirecting puppy mouthing, food puzzles, the \"this way\" cue indoors and in the garden, drop during play, rewarding independent chewing and soft body language, greeting at the doorway, recognising toileting signals, calm exposure to unfamiliar people, recall in a new location, and generalising calmness",
@@ -3003,8 +3013,7 @@ function renderAbout(container){
   const reviewStatus = kb.content_review_status;
   container.innerHTML = `
     <div class="about-hero" style="text-align:center; margin-bottom:18px;">
-      ${pawLogoSVG(72)}
-      <h2 style="margin:12px 0 2px;">Sidekick</h2>
+      <div style="margin-bottom:8px;">${sk.logoLockupHTML(220)}</div>
       <p style="color:var(--ink-soft); font-size:13.5px; margin-bottom:0;">A calm, reward-based training companion for you and your dog.</p>
     </div>
 
