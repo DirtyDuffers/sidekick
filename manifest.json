@@ -20,6 +20,13 @@
       "description": "Jump straight into today's suggested lesson",
       "url": "./index.html?action=suggested",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Clicker",
+      "short_name": "Clicker",
+      "description": "Open the standalone clicker",
+      "url": "./index.html?action=clicker",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }

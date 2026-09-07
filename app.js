@@ -87,12 +87,43 @@ function setVoiceEnabled(on){
   DB.settings.voiceGuidance = on;
   saveDB();
 }
+function getQuietHours(){
+  const s = DB.settings || {};
+  return {
+    enabled: !!s.quietHoursEnabled,
+    start: s.quietHoursStart || "21:00",
+    end: s.quietHoursEnd || "07:00",
+  };
+}
+function setQuietHours(enabled, start, end){
+  if(!DB.settings) DB.settings = {};
+  DB.settings.quietHoursEnabled = enabled;
+  if(start) DB.settings.quietHoursStart = start;
+  if(end) DB.settings.quietHoursEnd = end;
+  saveDB();
+}
+// Handles the overnight case (e.g. 21:00-07:00 spans midnight) as well as a
+// same-day window (e.g. 13:00-14:00) with the same comparison.
+function isWithinQuietHours(){
+  const q = getQuietHours();
+  if(!q.enabled) return false;
+  const now = new Date();
+  const mins = now.getHours()*60 + now.getMinutes();
+  const [sh,sm] = q.start.split(":").map(Number);
+  const [eh,em] = q.end.split(":").map(Number);
+  const startMins = sh*60+sm, endMins = eh*60+em;
+  if(startMins === endMins) return false; // a zero-length window means "never"
+  if(startMins < endMins) return mins >= startMins && mins < endMins;
+  return mins >= startMins || mins < endMins; // overnight wrap
+}
 // Speaks a short phrase aloud during a session, for the exact moment hands
 // are full (treat, lead) and eyes are on the dog, not the phone. Silently
-// does nothing if the setting is off or the browser has no speech support —
-// this is a convenience layer, never something the app depends on.
+// does nothing if the setting is off, quiet hours are active, or the browser
+// has no speech support — this is a convenience layer, never something the
+// app depends on.
 function speak(text){
   if(!isVoiceEnabled()) return;
+  if(isWithinQuietHours()) return;
   if(!("speechSynthesis" in window)) return;
   try{
     window.speechSynthesis.cancel(); // don't let phrases queue up and lag behind real reps
@@ -116,41 +147,52 @@ function playClickSound(){
       sharedAudioCtx = new Ctx();
     }
     const ctx = sharedAudioCtx;
-    if(ctx.state === "suspended") ctx.resume();
-    const now = ctx.currentTime;
-
-    // Noise burst: a short buffer of random samples run through a highpass
-    // filter, giving the sharp "snap" transient rather than a dull thud.
-    const bufferLen = Math.floor(ctx.sampleRate * 0.02);
-    const buffer = ctx.createBuffer(1, bufferLen, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for(let i=0;i<bufferLen;i++) data[i] = (Math.random()*2-1) * (1 - i/bufferLen);
-    const noise = ctx.createBufferSource();
-    noise.buffer = buffer;
-    const filter = ctx.createBiquadFilter();
-    filter.type = "highpass";
-    filter.frequency.value = 2500;
-    const noiseGain = ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.9, now);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
-    noise.connect(filter);
-    filter.connect(noiseGain);
-    noiseGain.connect(ctx.destination);
-    noise.start(now);
-    noise.stop(now + 0.03);
-
-    // Tone layer: a very short, fast-decaying high tone for the "click" pitch.
-    const osc = ctx.createOscillator();
-    osc.type = "square";
-    osc.frequency.setValueAtTime(3200, now);
-    const oscGain = ctx.createGain();
-    oscGain.gain.setValueAtTime(0.25, now);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
-    osc.connect(oscGain);
-    oscGain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.02);
+    // A freshly-created or previously-suspended context must actually finish
+    // resuming before its clock runs and its graph processes anything -- an
+    // AudioContext does not advance currentTime, or play anything scheduled
+    // against it, while suspended. Scheduling before resume() resolves is
+    // exactly what was silently dropping the sound.
+    if(ctx.state === "suspended"){
+      ctx.resume().then(()=>scheduleClickSound(ctx)).catch(()=>{});
+    }else{
+      scheduleClickSound(ctx);
+    }
   }catch(e){ /* clicker sound is a nice-to-have, never worth surfacing an error for */ }
+}
+function scheduleClickSound(ctx){
+  const now = ctx.currentTime; // captured only once we know the context is actually running
+
+  // Noise burst: a short buffer of random samples run through a highpass
+  // filter, giving the sharp "snap" transient rather than a dull thud.
+  const bufferLen = Math.floor(ctx.sampleRate * 0.03);
+  const buffer = ctx.createBuffer(1, bufferLen, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for(let i=0;i<bufferLen;i++) data[i] = (Math.random()*2-1) * (1 - i/bufferLen);
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = "highpass";
+  filter.frequency.value = 2500;
+  const noiseGain = ctx.createGain();
+  noiseGain.gain.setValueAtTime(1, now);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+  noise.connect(filter);
+  filter.connect(noiseGain);
+  noiseGain.connect(ctx.destination);
+  noise.start(now);
+  noise.stop(now + 0.045);
+
+  // Tone layer: a very short, fast-decaying high tone for the "click" pitch.
+  const osc = ctx.createOscillator();
+  osc.type = "square";
+  osc.frequency.setValueAtTime(3200, now);
+  const oscGain = ctx.createGain();
+  oscGain.gain.setValueAtTime(0.35, now);
+  oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+  osc.connect(oscGain);
+  oscGain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.03);
 }
 function saveDB(){
   try{
@@ -403,6 +445,7 @@ window.__sk = {
   isFavourite, toggleFavourite, getLessonNote, setLessonNote,
   uid, esc, fmtDate, daysAgo, showToast, openModal, closeModal, setTheme, logoLockupHTML,
   isVoiceEnabled, setVoiceEnabled, speak, playClickSound,
+  getQuietHours, setQuietHours,
   goScreen, render, SCREEN_RENDERERS, saveDB, loadKnowledgeBase, loadDB, setTabbarVisible
 };
 
@@ -449,6 +492,9 @@ async function boot(){
         const lesson = window.__sk.suggestedLesson(dog);
         if(lesson) window.__sk.startSession(lesson.lesson_id);
       }
+      history.replaceState(null, "", location.pathname);
+    }else if(params.get("action") === "clicker"){
+      window.__sk.openClickerModal();
       history.replaceState(null, "", location.pathname);
     }
   }
@@ -1140,6 +1186,7 @@ function openTrainingJourney(dog){
 sk.SCREEN_RENDERERS.home = renderHome;
 window.__sk.setTopbar = setTopbar;
 window.__sk.suggestedLesson = suggestedLesson;
+window.__sk.openClickerModal = openClickerModal;
 window.__sk.todaysSessionLessons = todaysSessionLessons;
 window.__sk.recentStruggleNote = recentStruggleNote;
 window.__sk.overallProgressPercent = overallProgressPercent;
@@ -2314,6 +2361,7 @@ function renderMore(container){
   const dog = sk.getCurrentDog();
   const currentTheme = (sk.DB.settings && sk.DB.settings.theme) || "auto";
   const voiceOn = sk.isVoiceEnabled();
+  const quietHours = sk.getQuietHours();
   container.innerHTML = `
     <div class="section-label" role="heading" aria-level="2">Dogs</div>
     <div class="row-list">
@@ -2374,6 +2422,22 @@ function renderMore(container){
           <span style="position:absolute; top:2px; left:${voiceOn?'21px':'2px'}; width:23px; height:23px; border-radius:50%; background:#fff; transition:left 0.15s;"></span>
         </button>
       </div>
+      <div style="border-top:1px solid var(--line); margin-top:14px; padding-top:14px; display:flex; align-items:center; gap:12px;">
+        <div style="flex:1;">
+          <div style="font-weight:600; font-size:14px;">Quiet hours</div>
+          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">Stay silent during this window, even if voice guidance is on.</div>
+        </div>
+        <button type="button" id="quietHoursToggle" role="switch" aria-checked="${quietHours.enabled}" aria-label="Enable quiet hours" style="flex:none; width:46px; height:27px; border-radius:14px; border:none; background:${quietHours.enabled?'var(--forest)':'var(--line)'}; position:relative; cursor:pointer; padding:0;">
+          <span style="position:absolute; top:2px; left:${quietHours.enabled?'21px':'2px'}; width:23px; height:23px; border-radius:50%; background:#fff; transition:left 0.15s;"></span>
+        </button>
+      </div>
+      ${quietHours.enabled ? `
+      <div style="display:flex; gap:10px; margin-top:12px; align-items:center;">
+        <label for="quietHoursStart" style="font-size:12.5px; color:var(--ink-soft); flex:none;">From</label>
+        <input type="time" id="quietHoursStart" value="${quietHours.start}" style="flex:1; padding:8px; border-radius:8px; border:1px solid var(--line); background:var(--canvas-raised); color:var(--ink);">
+        <label for="quietHoursEnd" style="font-size:12.5px; color:var(--ink-soft); flex:none;">to</label>
+        <input type="time" id="quietHoursEnd" value="${quietHours.end}" style="flex:1; padding:8px; border-radius:8px; border:1px solid var(--line); background:var(--canvas-raised); color:var(--ink);">
+      </div>` : ""}
     </div>
 
     <div class="section-label" role="heading" aria-level="2">Content check</div>
@@ -2427,6 +2491,21 @@ function renderMore(container){
     sk.setVoiceEnabled(now);
     renderMore(container); // repaint so the switch position and aria-checked update
     if(now) sk.speak("Voice guidance on");
+  });
+  container.querySelector("#quietHoursToggle").addEventListener("click", ()=>{
+    const q = sk.getQuietHours();
+    sk.setQuietHours(!q.enabled, q.start, q.end);
+    renderMore(container);
+  });
+  const qStart = container.querySelector("#quietHoursStart");
+  const qEnd = container.querySelector("#quietHoursEnd");
+  if(qStart) qStart.addEventListener("change", ()=>{
+    const q = sk.getQuietHours();
+    sk.setQuietHours(q.enabled, qStart.value, q.end);
+  });
+  if(qEnd) qEnd.addEventListener("change", ()=>{
+    const q = sk.getQuietHours();
+    sk.setQuietHours(q.enabled, q.start, qEnd.value);
   });
   container.querySelector("#integrityBtn").addEventListener("click", ()=>runIntegrityCheckUI(container));
   container.querySelector("#exportBtn").addEventListener("click", exportBackup);
@@ -2923,9 +3002,15 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "5.0.0";
+const APP_VERSION = "5.1.0";
 
 const CHANGELOG = [
+  { version: "5.1.0", notes: [
+    "Fixed the clicker not making a sound: the audio context's resume() is asynchronous, and the click was being scheduled before it finished — a suspended AudioContext doesn't process anything scheduled against it. Now waits properly for resume to complete first",
+    "New: Quiet hours (Profile → Voice guidance) — set a time window where voice guidance stays silent even if it's turned on, correctly handling overnight ranges that cross midnight",
+    "New: a second home-screen shortcut for the Clicker, alongside the existing \"Start today's suggestion\" one — long-press the app icon to jump straight to it",
+    "Note: a true home-screen widget showing live content isn't possible in a web app without native platform code — the shortcut above is the closest equivalent a PWA can offer",
+  ]},
   { version: "5.0.0", notes: [
     "New: step-by-step guidance during training — the numbered steps are now visible on screen during a real session (not just before starting), with the current step highlighted in time with the voice reading it aloud",
     "New: a 🔊 button to re-hear the steps at any point mid-session, and a repeat-the-instructions flow if voice guidance is on",
