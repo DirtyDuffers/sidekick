@@ -102,6 +102,56 @@ function speak(text){
     window.speechSynthesis.speak(u);
   }catch(e){ /* speech is a nice-to-have, never worth surfacing an error for */ }
 }
+
+let sharedAudioCtx = null;
+// Synthesises a short, sharp "click" -- there's no bundled audio file, so this
+// builds the sound from scratch with the Web Audio API: a very brief burst of
+// filtered noise (the "snap") layered under a short high tone (the "click"
+// pitch a real box clicker has), both with a near-instant decay envelope.
+function playClickSound(){
+  try{
+    if(!sharedAudioCtx){
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if(!Ctx) return;
+      sharedAudioCtx = new Ctx();
+    }
+    const ctx = sharedAudioCtx;
+    if(ctx.state === "suspended") ctx.resume();
+    const now = ctx.currentTime;
+
+    // Noise burst: a short buffer of random samples run through a highpass
+    // filter, giving the sharp "snap" transient rather than a dull thud.
+    const bufferLen = Math.floor(ctx.sampleRate * 0.02);
+    const buffer = ctx.createBuffer(1, bufferLen, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for(let i=0;i<bufferLen;i++) data[i] = (Math.random()*2-1) * (1 - i/bufferLen);
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "highpass";
+    filter.frequency.value = 2500;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.9, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noise.start(now);
+    noise.stop(now + 0.03);
+
+    // Tone layer: a very short, fast-decaying high tone for the "click" pitch.
+    const osc = ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(3200, now);
+    const oscGain = ctx.createGain();
+    oscGain.gain.setValueAtTime(0.25, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
+    osc.connect(oscGain);
+    oscGain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.02);
+  }catch(e){ /* clicker sound is a nice-to-have, never worth surfacing an error for */ }
+}
 function saveDB(){
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
@@ -352,7 +402,7 @@ window.__sk = {
   getCurrentDog, ensureCurrentDog, dogSkillState, setDogSkillState, dogLessonProgress,
   isFavourite, toggleFavourite, getLessonNote, setLessonNote,
   uid, esc, fmtDate, daysAgo, showToast, openModal, closeModal, setTheme, logoLockupHTML,
-  isVoiceEnabled, setVoiceEnabled, speak,
+  isVoiceEnabled, setVoiceEnabled, speak, playClickSound,
   goScreen, render, SCREEN_RENDERERS, saveDB, loadKnowledgeBase, loadDB, setTabbarVisible
 };
 
@@ -470,7 +520,7 @@ async function processDogPhoto(file){
 }
 
 function renderOnboarding(container){
-  sk.setTopbar("Sidekick", "Let's get set up", "");
+  sk.setTopbar("Sidekick", "Let's get set up", "", true);
   container.innerHTML = `
     <div style="padding-top:8px;">
       <div style="text-align:center; margin-bottom:24px;">
@@ -962,6 +1012,7 @@ function renderHome(container){
       <button class="row" id="quickWhatTrain"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>What should I train?</div><div class="row-meta">Browse by category</div></div><span class="row-chev">›</span></button>
       <button class="row" id="quickBehaviour"><div class="row-tab" style="background:var(--red)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><path d="M4 5h16v10H8l-4 4z"/><path d="M12 8.5v2.5M12 14v.01"/></svg>Help with a behaviour</div><div class="row-meta">Answer a couple of questions</div></div><span class="row-chev">›</span></button>
       <button class="row" id="quickBrowse"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><path d="M4 5.5c0-.6.4-1 1-1h5.5a2 2 0 0 1 2 2v13a1.5 1.5 0 0 0-1.5-1.5H4z"/><path d="M20 5.5c0-.6-.4-1-1-1h-5.5a2 2 0 0 0-2 2v13a1.5 1.5 0 0 1 1.5-1.5H20z"/></svg>Browse all lessons</div><div class="row-meta">${sk.KB.collections.lessons.length} lessons in the library</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="quickClicker"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">🔨 Clicker</div><div class="row-meta">A tap-to-click sound, ready anytime</div></div><span class="row-chev">›</span></button>
     </div>
 
     <div class="section-label" role="heading" aria-level="2">${sk.esc(dog.name)}'s progress <a href="#" id="seeProgress" style="font-size:11px;text-transform:none;letter-spacing:0;font-weight:600;color:var(--forest);">View all →</a></div>
@@ -997,12 +1048,34 @@ function renderHome(container){
   container.querySelector("#quickWhatTrain").addEventListener("click", ()=>sk.goScreen("lessons"));
   container.querySelector("#quickBehaviour").addEventListener("click", sk.openTroubleshootPicker);
   container.querySelector("#quickBrowse").addEventListener("click", ()=>sk.goScreen("lessons"));
+  container.querySelector("#quickClicker").addEventListener("click", openClickerModal);
   container.querySelector("#seeProgress").addEventListener("click", (e)=>{ e.preventDefault(); sk.goScreen("progress"); });
 }
 
 // The dog's overall training journey -- pulls together stats that already
 // exist scattered across Home and Progress into one motivating summary,
 // rather than a new tracking system.
+// A standalone clicker, independent of any lesson -- for general clicker-training
+// practice, charging the clicker with a new dog, or just testing the sound.
+function openClickerModal(){
+  let count = 0;
+  sk.openModal(`
+    <h3 style="text-align:center;">Clicker</h3>
+    <p style="color:var(--ink-soft); font-size:13px; text-align:center; margin-bottom:24px;">Tap the button to hear a click — mark the moment, then reward.</p>
+    <div style="display:flex; justify-content:center; margin-bottom:20px;">
+      <button id="clickerMainBtn" aria-label="Play click sound" style="width:180px; height:180px; border-radius:50%; border:none; background:var(--forest); color:#fff; font-size:20px; font-weight:700; font-family:var(--font-display); cursor:pointer; box-shadow:var(--shadow-card);">🔨 Click</button>
+    </div>
+    <p style="text-align:center; color:var(--ink-soft); font-size:13px;" id="clickerCount">0 clicks this session</p>
+  `);
+  const btn = document.getElementById("clickerMainBtn");
+  const countEl = document.getElementById("clickerCount");
+  btn.addEventListener("click", ()=>{
+    sk.playClickSound();
+    count++;
+    countEl.textContent = count + (count===1 ? " click this session" : " clicks this session");
+  });
+}
+
 function openTrainingJourney(dog){
   const counts = skillSummary(dog.id);
   const skillTotal = sk.KB.collections.skills.length;
@@ -1685,6 +1758,7 @@ function startSession(lessonId){
 function renderSessionScreen(){
   const session = sk.activeSession;
   const l = sk.IDX.lessonsById.get(session.lessonId);
+  const steps = sk.splitPipe(l.steps);
   sk.setTopbar(l.title, "Training session", `<button class="icon-btn" id="endBtn" aria-label="End session">✕</button>`);
   const container = document.getElementById("screens");
   container.innerHTML = `<div class="screen active">
@@ -1698,6 +1772,15 @@ function renderSessionScreen(){
         <button class="btn btn-primary btn-block" id="repSuccess">✓ Success</button>
         <button class="btn btn-ghost btn-block" id="repMiss">✗ No luck</button>
       </div>
+      <button class="btn btn-secondary btn-block" id="clickerBtn" style="margin-top:10px;">🔨 Click</button>
+    </div>
+
+    <div class="section-label" role="heading" aria-level="2">
+      What to do
+      <button class="icon-btn" id="repeatStepsBtn" aria-label="Read steps aloud again" style="float:right; width:28px; height:28px; font-size:13px;">🔊</button>
+    </div>
+    <div class="card" id="stepsCard">
+      ${steps.map((s,i)=>`<div class="step-item" data-step-idx="${i}"><div class="step-num-lg" style="background:var(${sk.getCategoryVar(l.category)});">${i+1}</div><div style="padding-top:4px;">${sk.esc(s)}</div></div>`).join("")}
     </div>
 
     <div class="section-label" role="heading" aria-level="2">Reminder</div>
@@ -1706,7 +1789,32 @@ function renderSessionScreen(){
     <button class="btn btn-secondary btn-block" id="finishBtn" style="margin-top:16px;">Finish session</button>
   </div>`;
 
-  sk.speak(`Starting ${l.title}. Remember: ${l.success_criteria}`);
+  const stepsSpoken = steps.map((s,i)=>`Step ${i+1}: ${s}`).join(". ");
+  function speakSteps(){ sk.speak(`${l.title}. ${stepsSpoken}`); }
+  speakSteps();
+
+  // Cycles a highlight through the visible steps in time with the spoken
+  // list above, so glancing at the screen mid-rep shows roughly where the
+  // voice guidance is up to -- an approximation, not a precise sync, since
+  // speech duration varies with device and voice.
+  let highlightTimer = null;
+  function highlightStepsInSequence(){
+    clearTimeout(highlightTimer);
+    const items = container.querySelectorAll("#stepsCard .step-item");
+    items.forEach(it=>it.classList.remove("step-active"));
+    let i = 0;
+    const advance = ()=>{
+      items.forEach(it=>it.classList.remove("step-active"));
+      if(i >= items.length) return;
+      items[i].classList.add("step-active");
+      const words = steps[i].split(" ").length;
+      const ms = Math.max(1400, words * 320);
+      i++;
+      highlightTimer = setTimeout(advance, ms);
+    };
+    advance();
+  }
+  if(sk.isVoiceEnabled()) highlightStepsInSequence();
 
   function paint(){
     const total = session.reps.length;
@@ -1720,12 +1828,16 @@ function renderSessionScreen(){
   }
   container.querySelector("#repSuccess").addEventListener("click", ()=>{ session.reps.push(true); paint(); sk.speak("Yes"); });
   container.querySelector("#repMiss").addEventListener("click", ()=>{ session.reps.push(false); paint(); sk.speak("Okay, next one"); });
+  container.querySelector("#clickerBtn").addEventListener("click", sk.playClickSound);
+  container.querySelector("#repeatStepsBtn").addEventListener("click", ()=>{ speakSteps(); if(sk.isVoiceEnabled()) highlightStepsInSequence(); });
   container.querySelector("#finishBtn").addEventListener("click", ()=>{
+    clearTimeout(highlightTimer);
     const succ = session.reps.filter(r=>r).length;
     sk.speak(`Session finished. ${succ} out of ${session.reps.length} successful.`);
     renderFeedbackStep();
   });
   document.getElementById("endBtn").addEventListener("click", ()=>{
+    clearTimeout(highlightTimer);
     sk.setActiveSession(null);
     openLessonDetail(l.lesson_id);
   });
@@ -2428,6 +2540,7 @@ function renderProgrammeBlock(){
   const prog = sk.activeProgramme;
   const pName = programmeDisplayName(prog);
   const l = prog.lessons[prog.index];
+  const steps = sk.splitPipe(l.steps);
   const reps = [];
   sk.setTopbar(pName, "Block "+(prog.index+1)+" of "+prog.lessons.length, `<button class="icon-btn" id="endProgBtn" aria-label="End programme">✕</button>`);
   const container = document.getElementById("screens");
@@ -2443,12 +2556,45 @@ function renderProgrammeBlock(){
         <button class="btn btn-primary btn-block" id="repSuccess">✓ Success</button>
         <button class="btn btn-ghost btn-block" id="repMiss">✗ No luck</button>
       </div>
+      <button class="btn btn-secondary btn-block" id="clickerBtn" style="margin-top:10px;">🔨 Click</button>
     </div>
-    <button class="btn btn-secondary btn-block" id="nextBlockBtn" style="margin-top:8px;">
+
+    <div class="section-label" role="heading" aria-level="2">
+      What to do
+      <button class="icon-btn" id="repeatStepsBtn" aria-label="Read steps aloud again" style="float:right; width:28px; height:28px; font-size:13px;">🔊</button>
+    </div>
+    <div class="card" id="stepsCard">
+      ${steps.map((s,i)=>`<div class="step-item" data-step-idx="${i}"><div class="step-num-lg" style="background:var(${sk.getCategoryVar(l.category)});">${i+1}</div><div style="padding-top:4px;">${sk.esc(s)}</div></div>`).join("")}
+    </div>
+
+    <button class="btn btn-secondary btn-block" id="nextBlockBtn" style="margin-top:16px;">
       ${prog.index === prog.lessons.length-1 ? "Finish programme" : "Next block"}
     </button>
   </div>`;
-  sk.speak(`Block ${prog.index+1} of ${prog.lessons.length}: ${l.title}.`);
+
+  const stepsSpoken = steps.map((s,i)=>`Step ${i+1}: ${s}`).join(". ");
+  function speakSteps(){ sk.speak(`Block ${prog.index+1} of ${prog.lessons.length}: ${l.title}. ${stepsSpoken}`); }
+  speakSteps();
+
+  let highlightTimer = null;
+  function highlightStepsInSequence(){
+    clearTimeout(highlightTimer);
+    const items = container.querySelectorAll("#stepsCard .step-item");
+    items.forEach(it=>it.classList.remove("step-active"));
+    let i = 0;
+    const advance = ()=>{
+      items.forEach(it=>it.classList.remove("step-active"));
+      if(i >= items.length) return;
+      items[i].classList.add("step-active");
+      const words = steps[i].split(" ").length;
+      const ms = Math.max(1400, words * 320);
+      i++;
+      highlightTimer = setTimeout(advance, ms);
+    };
+    advance();
+  }
+  if(sk.isVoiceEnabled()) highlightStepsInSequence();
+
   function paint(){
     const succ = reps.filter(r=>r).length;
     container.querySelector("#repCounter").textContent = reps.length;
@@ -2456,7 +2602,10 @@ function renderProgrammeBlock(){
   }
   container.querySelector("#repSuccess").addEventListener("click", ()=>{ reps.push(true); paint(); sk.speak("Yes"); });
   container.querySelector("#repMiss").addEventListener("click", ()=>{ reps.push(false); paint(); sk.speak("Okay, next one"); });
+  container.querySelector("#clickerBtn").addEventListener("click", sk.playClickSound);
+  container.querySelector("#repeatStepsBtn").addEventListener("click", ()=>{ speakSteps(); if(sk.isVoiceEnabled()) highlightStepsInSequence(); });
   container.querySelector("#nextBlockBtn").addEventListener("click", ()=>{
+    clearTimeout(highlightTimer);
     prog.blockResults.push({ lessonId: l.lesson_id, reps: reps.slice() });
     if(prog.index === prog.lessons.length-1){
       renderProgrammeFeedback();
@@ -2466,6 +2615,7 @@ function renderProgrammeBlock(){
     }
   });
   document.getElementById("endProgBtn").addEventListener("click", ()=>{
+    clearTimeout(highlightTimer);
     const wasAdHoc = !prog.programmeId;
     sk.setActiveProgramme(null);
     sk.goScreen(wasAdHoc ? "home" : "more");
@@ -2773,9 +2923,18 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "4.8.0";
+const APP_VERSION = "5.0.0";
 
 const CHANGELOG = [
+  { version: "5.0.0", notes: [
+    "New: step-by-step guidance during training — the numbered steps are now visible on screen during a real session (not just before starting), with the current step highlighted in time with the voice reading it aloud",
+    "New: a 🔊 button to re-hear the steps at any point mid-session, and a repeat-the-instructions flow if voice guidance is on",
+    "New: a clicker — synthesised entirely with the Web Audio API, no audio file needed. Available as a standalone tool from Home (\"🔨 Clicker\"), and as a button during both single-lesson sessions and daily-programme blocks",
+    "Both features work in the single-lesson session screen and the multi-lesson programme runner",
+  ]},
+  { version: "4.9.0", notes: [
+    "Fixed the onboarding screen's top bar still showing the small icon-plus-text combo instead of the full logo — it now matches Home, on both the normal first-run path and the \"all dogs removed\" reset path",
+  ]},
   { version: "4.8.0", notes: [
     "Accessibility pass: added missing labels on the voice-guidance toggle and all form inputs (onboarding and add/edit dog), linked chip-group selections to their headings, added aria-current to the active tab, retrofitted heading semantics onto all 48 section headers so screen readers can navigate between them, and fixed a genuine color contrast failure on the amber \"Consider\" badge text",
     "Verified rather than assumed several things were already solid: modal focus-trap, Escape-to-close, focus-visible outlines, and toast announcements all checked and confirmed working correctly",

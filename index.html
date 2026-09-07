@@ -323,7 +323,8 @@ textarea{resize:vertical; min-height:70px;}
 }
 .avatar-lg{width:72px; height:72px; font-size:32px;}
 
-.step-item{display:flex; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); align-items:flex-start;}
+.step-item{display:flex; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); align-items:flex-start; border-radius:10px; transition:background-color 0.3s ease;}
+.step-item.step-active{background:var(--ochre-soft); margin:0 -10px; padding:10px; border-bottom-color:transparent;}
 .step-item:last-child{border-bottom:none;}
 .step-num{
   width:24px; height:24px; border-radius:50%; background:var(--forest); color:#fff;
