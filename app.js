@@ -38,6 +38,25 @@ const FEEDBACK_DISPLAY = {
 };
 const AVATAR_COLORS = ["#2F5233","#3E6E82","#C08A2B","#6B4E9A","#B23A2E","#4E7A8C","#8A6D3A"];
 const DOG_EMOJI = ["🐕","🐶","🐩","🦮","🐕‍🦺"];
+// A curated subset of existing Enrichment / Tricks & Games lessons, presented
+// as a browsable "Games" grid -- not new content, just a more playful way
+// into lessons that already exist. Each opens straight into its real lesson
+// detail page (steps, safety notes, etc. all already there).
+const GAMES_LIST = [
+  {lessonId:"ENR-006", emoji:"🧩"},
+  {lessonId:"ENR-005", emoji:"📦"},
+  {lessonId:"ENR-014", emoji:"🙈"},
+  {lessonId:"ENR-015", emoji:"🗺️"},
+  {lessonId:"TRK-018", emoji:"🔍"},
+  {lessonId:"TRK-019", emoji:"🥤"},
+  {lessonId:"TRK-020", emoji:"✊"},
+  {lessonId:"TRK-021", emoji:"🚶"},
+  {lessonId:"TRK-022", emoji:"🏃"},
+  {lessonId:"TRK-023", emoji:"🏓"},
+  {lessonId:"TRK-024", emoji:"🚦"},
+  {lessonId:"TRK-025", emoji:"🏷️"},
+  {lessonId:"TRK-026", emoji:"🕵️"},
+];
 const AGE_STAGES = ["Puppy","Adolescent","Adult","Senior"];
 const GENDERS = ["Male","Female","Unknown"];
 
@@ -59,10 +78,22 @@ function loadDB(){
       const parsed = JSON.parse(raw);
       if(!parsed.favourites) parsed.favourites = []; // added after initial release — default for existing saves
       if(!parsed.lessonNotes) parsed.lessonNotes = {}; // added after initial release — default for existing saves
+      if(!parsed.weightLogs) parsed.weightLogs = []; // added after initial release — default for existing saves
       return parsed;
     }
   }catch(e){ console.error("Sidekick: failed to parse local data, starting fresh.", e); }
-  return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{}, favourites:[], lessonNotes:{} };
+  return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{}, favourites:[], lessonNotes:{}, weightLogs:[] };
+}
+function getWeightLogs(dogId){
+  return DB.weightLogs.filter(w=>w.dogId===dogId).sort((a,b)=>new Date(a.date)-new Date(b.date));
+}
+function addWeightEntry(dogId, date, weight, unit){
+  DB.weightLogs.push({ id: uid(), dogId, date, weight: Number(weight), unit: unit||"kg" });
+  saveDB();
+}
+function deleteWeightEntry(id){
+  DB.weightLogs = DB.weightLogs.filter(w=>w.id!==id);
+  saveDB();
 }
 function applyTheme(theme){
   document.body.dataset.theme = theme; // "light" | "dark" | "auto" — CSS handles all three
@@ -79,6 +110,22 @@ function setTheme(theme){
   DB.settings.theme = theme;
   saveDB();
   applyTheme(theme);
+}
+// Voice list loads asynchronously in some browsers (empty on the very first
+// call until the browser actually finishes enumerating system voices), so
+// this is exposed as a function to call fresh each time rather than cached
+// once at startup.
+function getAvailableVoices(){
+  if(!("speechSynthesis" in window)) return [];
+  return window.speechSynthesis.getVoices();
+}
+function getSelectedVoiceURI(){
+  return (DB.settings && DB.settings.voiceURI) || "";
+}
+function setSelectedVoiceURI(uri){
+  if(!DB.settings) DB.settings = {};
+  DB.settings.voiceURI = uri;
+  saveDB();
 }
 function isVoiceEnabled(){
   return !!(DB.settings && DB.settings.voiceGuidance);
@@ -152,6 +199,18 @@ function speak(text){
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 1.05;
     u.volume = 1;
+    // Isolated deliberately: if the stored voice preference no longer matches
+    // an available voice, or assigning it fails for any browser-specific
+    // reason, the utterance must still be spoken with the default voice --
+    // not dropped silently, which would defeat the entire point of this
+    // being a reliability feature for hands-full moments.
+    try{
+      const wantedURI = getSelectedVoiceURI();
+      if(wantedURI){
+        const match = getAvailableVoices().find(v=>v.voiceURI === wantedURI);
+        if(match) u.voice = match;
+      }
+    }catch(e){ /* falls back to the default voice */ }
     window.speechSynthesis.speak(u);
   }catch(e){ /* speech is a nice-to-have, never worth surfacing an error for */ }
 }
@@ -465,13 +524,15 @@ window.__sk = {
   get activeSession(){return activeSession;}, setActiveSession(v){activeSession=v;},
   get activeProgramme(){return activeProgramme;}, setActiveProgramme(v){activeProgramme=v;},
   CATEGORY_COLOR_VARS, CATEGORY_ICON, SKILL_STATES, STATE_COLOR, ADAPTIVE_FEEDBACK, FEEDBACK_DISPLAY,
-  AVATAR_COLORS, DOG_EMOJI, AGE_STAGES, GENDERS,
+  AVATAR_COLORS, DOG_EMOJI, AGE_STAGES, GENDERS, GAMES_LIST,
   splitPipe, splitSemi, getCategoryVar, getCategoryIcon,
   getCurrentDog, ensureCurrentDog, dogSkillState, setDogSkillState, dogLessonProgress,
   isFavourite, toggleFavourite, getLessonNote, setLessonNote,
   uid, esc, fmtDate, daysAgo, showToast, openModal, closeModal, setTheme, logoLockupHTML,
   isVoiceEnabled, setVoiceEnabled, speak, playClickSound,
+  getAvailableVoices, getSelectedVoiceURI, setSelectedVoiceURI,
   getQuietHours, setQuietHours,
+  getWeightLogs, addWeightEntry, deleteWeightEntry,
   isSilentModeBypassEnabled, setSilentModeBypassEnabled,
   goScreen, render, SCREEN_RENDERERS, saveDB, loadKnowledgeBase, loadDB, setTabbarVisible
 };
@@ -1114,6 +1175,7 @@ function renderHome(container){
       <button class="row" id="quickBehaviour"><div class="row-tab" style="background:var(--red)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><path d="M4 5h16v10H8l-4 4z"/><path d="M12 8.5v2.5M12 14v.01"/></svg>Help with a behaviour</div><div class="row-meta">Answer a couple of questions</div></div><span class="row-chev">›</span></button>
       <button class="row" id="quickBrowse"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><path d="M4 5.5c0-.6.4-1 1-1h5.5a2 2 0 0 1 2 2v13a1.5 1.5 0 0 0-1.5-1.5H4z"/><path d="M20 5.5c0-.6-.4-1-1-1h-5.5a2 2 0 0 0-2 2v13a1.5 1.5 0 0 1 1.5-1.5H20z"/></svg>Browse all lessons</div><div class="row-meta">${sk.KB.collections.lessons.length} lessons in the library</div></div><span class="row-chev">›</span></button>
       <button class="row" id="quickClicker"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">🔨 Clicker</div><div class="row-meta">A tap-to-click sound, ready anytime</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="quickGames"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title">🎮 Games</div><div class="row-meta">Fun ways to play, bond, and enrich</div></div><span class="row-chev">›</span></button>
     </div>
 
     <div class="section-label" role="heading" aria-level="2">${sk.esc(dog.name)}'s progress <a href="#" id="seeProgress" style="font-size:11px;text-transform:none;letter-spacing:0;font-weight:600;color:var(--forest);">View all →</a></div>
@@ -1150,6 +1212,7 @@ function renderHome(container){
   container.querySelector("#quickBehaviour").addEventListener("click", sk.openTroubleshootPicker);
   container.querySelector("#quickBrowse").addEventListener("click", ()=>sk.goScreen("lessons"));
   container.querySelector("#quickClicker").addEventListener("click", openClickerModal);
+  container.querySelector("#quickGames").addEventListener("click", openGamesModal);
   container.querySelector("#seeProgress").addEventListener("click", (e)=>{ e.preventDefault(); sk.goScreen("progress"); });
 }
 
@@ -1158,6 +1221,38 @@ function renderHome(container){
 // rather than a new tracking system.
 // A standalone clicker, independent of any lesson -- for general clicker-training
 // practice, charging the clicker with a new dog, or just testing the sound.
+// A playful, illustrated way into a curated set of existing Enrichment and
+// Tricks & Games lessons -- not a new content type, just a more fun front
+// door onto games that were already in the library. Each tile opens the
+// real lesson detail page.
+function openGamesModal(){
+  const dog = sk.getCurrentDog();
+  const tiles = sk.GAMES_LIST.map((g,i)=>{
+    const l = sk.IDX.lessonsById.get(g.lessonId);
+    if(!l) return "";
+    const done = dog && sk.dogLessonProgress(dog.id, l.lesson_id);
+    const color = sk.AVATAR_COLORS[i % sk.AVATAR_COLORS.length];
+    const thumb = (l.media && l.media.image)
+      ? `<img src="${sk.esc(l.media.image)}" alt="" loading="lazy" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
+      : `<div style="width:100%; height:100%; border-radius:50%; background:${color}; display:flex; align-items:center; justify-content:center; font-size:26px;">${g.emoji}</div>`;
+    return `
+      <button class="game-tile" data-game-lesson="${l.lesson_id}">
+        <div class="game-tile-thumb">${thumb}</div>
+        <div class="game-tile-label">${sk.esc(l.title)}</div>
+        ${done ? `<div class="game-tile-done">✓ Done</div>` : ""}
+      </button>
+    `;
+  }).join("");
+  sk.openModal(`
+    <h3>Games</h3>
+    <p style="color:var(--ink-soft); font-size:13px; margin-bottom:14px;">Fun ways to play, bond, and enrich your dog's day — pulled from the training library's Enrichment and Tricks &amp; Games lessons.</p>
+    <div class="game-grid">${tiles}</div>
+  `);
+  document.querySelectorAll("[data-game-lesson]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ sk.closeModal(); sk.openLessonDetail(btn.dataset.gameLesson); });
+  });
+}
+
 function openClickerModal(){
   let count = 0;
   sk.openModal(`
@@ -1221,6 +1316,104 @@ function trainingHeatmapHTML(dogId, weeks){
       <span>Less</span><span class="heatmap-cell" style="display:inline-block;"></span><span class="heatmap-cell trained" style="display:inline-block;"></span><span>Trained</span>
     </div>
   `;
+}
+
+// A minimal, dependency-free SVG line chart for weight-over-time -- points
+// are spaced evenly by entry order rather than proportionally by date gap,
+// which keeps irregular logging intervals (a week here, a month there) from
+// visually compressing or stretching the trend line unpredictably.
+function weightChartSVG(entries, unit){
+  const w = 320, h = 140, padX = 30, padY = 16;
+  const weights = entries.map(e=>e.weight);
+  let min = Math.min(...weights), max = Math.max(...weights);
+  if(min === max){ min -= 1; max += 1; } // avoid a zero-range chart being a flat line at the very edge
+  const range = max - min;
+  const min2 = min - range*0.15, max2 = max + range*0.15;
+  const range2 = max2 - min2;
+  const n = entries.length;
+  const xFor = i => n<=1 ? w/2 : padX + (i/(n-1))*(w-padX*2);
+  const yFor = v => h-padY - ((v-min2)/range2)*(h-padY*2);
+  const points = entries.map((e,i)=>`${xFor(i)},${yFor(e.weight)}`).join(" ");
+  const dots = entries.map((e,i)=>`<circle cx="${xFor(i)}" cy="${yFor(e.weight)}" r="3.5" fill="var(--forest)"/>`).join("");
+  const firstLabel = entries[0] ? sk.fmtDate(entries[0].date) : "";
+  const lastLabel = entries[n-1] ? sk.fmtDate(entries[n-1].date) : "";
+  return `
+    <svg viewBox="0 0 ${w} ${h}" style="width:100%; height:auto;" role="img" aria-label="Weight trend chart">
+      <polyline points="${points}" fill="none" stroke="var(--forest)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots}
+      <text x="${padX}" y="${h-2}" font-size="9" fill="var(--ink-soft)" text-anchor="start">${sk.esc(firstLabel)}</text>
+      <text x="${w-padX}" y="${h-2}" font-size="9" fill="var(--ink-soft)" text-anchor="end">${sk.esc(lastLabel)}</text>
+      <text x="2" y="${yFor(max2)+4}" font-size="9" fill="var(--ink-soft)">${max.toFixed(1)}${sk.esc(unit)}</text>
+      <text x="2" y="${yFor(min2)+4}" font-size="9" fill="var(--ink-soft)">${min.toFixed(1)}${sk.esc(unit)}</text>
+    </svg>
+  `;
+}
+
+// The dog's weight log -- a simple add-entry form, a chart, and a
+// deletable list, all scoped to whichever dog is currently active.
+function openWeightTracker(){
+  const dog = sk.getCurrentDog();
+  if(!dog){ sk.showToast("Add a dog first."); return; }
+  render();
+  function render(){
+    const entries = sk.getWeightLogs(dog.id);
+    const unit = entries.length ? entries[entries.length-1].unit : "kg";
+    sk.openModal(`
+      <img src="images/weight-hero.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;">
+      <h3>${sk.esc(dog.name)}'s weight</h3>
+      ${entries.length>=2 ? `<div class="card">${weightChartSVG(entries, unit)}</div>` : `<p style="color:var(--ink-soft); font-size:13px;">Log at least two entries to see a trend chart.</p>`}
+
+      <div class="section-label" role="heading" aria-level="2">Add an entry</div>
+      <div class="card">
+        <form id="weightForm">
+          <label for="wt_date">Date</label>
+          <input type="date" id="wt_date" value="${new Date().toISOString().slice(0,10)}" max="${new Date().toISOString().slice(0,10)}" required>
+          <div style="display:flex; gap:10px; align-items:flex-end;">
+            <div style="flex:1;">
+              <label for="wt_value">Weight</label>
+              <input type="number" id="wt_value" step="0.1" min="0" placeholder="e.g. 12.5" required>
+            </div>
+            <div class="chip-group" id="wt_unit" role="group" aria-label="Unit" style="margin-bottom:12px;">
+              <button type="button" class="chip${unit==="kg"?" selected":""}" data-val="kg">kg</button>
+              <button type="button" class="chip${unit==="lb"?" selected":""}" data-val="lb">lb</button>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">Save entry</button>
+        </form>
+      </div>
+
+      ${entries.length ? `<div class="section-label" role="heading" aria-level="2">History</div>
+      <div class="row-list">
+        ${entries.slice().reverse().map(e=>`
+          <div class="row" style="cursor:default;">
+            <div class="row-body"><div class="row-title">${e.weight}${sk.esc(e.unit)}</div><div class="row-meta">${sk.fmtDate(e.date)}</div></div>
+            <button type="button" class="icon-btn" data-delete-weight="${e.id}" aria-label="Delete this entry" style="width:32px; height:32px; font-size:14px;">🗑️</button>
+          </div>
+        `).join("")}
+      </div>` : ""}
+    `);
+    let selectedUnit = unit;
+    document.getElementById("wt_unit").addEventListener("click", e=>{
+      const b = e.target.closest(".chip"); if(!b) return;
+      document.querySelectorAll("#wt_unit .chip").forEach(c=>c.classList.remove("selected"));
+      b.classList.add("selected");
+      selectedUnit = b.dataset.val;
+    });
+    document.getElementById("weightForm").addEventListener("submit", e=>{
+      e.preventDefault();
+      const date = document.getElementById("wt_date").value;
+      const value = document.getElementById("wt_value").value;
+      if(!date || !value) return;
+      sk.addWeightEntry(dog.id, date, value, selectedUnit);
+      render(); // repaint with the new entry included
+    });
+    document.querySelectorAll("[data-delete-weight]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        sk.deleteWeightEntry(btn.dataset.deleteWeight);
+        render();
+      });
+    });
+  }
 }
 
 function openTrainingJourney(dog){
@@ -1293,6 +1486,8 @@ sk.SCREEN_RENDERERS.home = renderHome;
 window.__sk.setTopbar = setTopbar;
 window.__sk.suggestedLesson = suggestedLesson;
 window.__sk.openClickerModal = openClickerModal;
+window.__sk.openGamesModal = openGamesModal;
+window.__sk.openWeightTracker = openWeightTracker;
 window.__sk.todaysSessionLessons = todaysSessionLessons;
 window.__sk.recentStruggleNote = recentStruggleNote;
 window.__sk.overallProgressPercent = overallProgressPercent;
@@ -1924,7 +2119,10 @@ function renderSessionScreen(){
       <p style="font-size:14px; margin:12px 0 4px; color:var(--ink-soft);">Tap after each repetition</p>
       <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); margin-top:6px;" id="repLabel">Rep 0</div>
       <div style="font-size:40px; font-weight:700; font-family:var(--font-display); margin:2px 0;" id="repCounter">0</div>
-      <div style="font-size:13px; color:var(--ink-soft); margin-bottom:16px;" id="repBreakdown">successful, 0 so far</div>
+      <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:16px;">
+        <div style="font-size:13px; color:var(--ink-soft);" id="repBreakdown">successful, 0 so far</div>
+        <button type="button" id="undoRepBtn" aria-label="Undo last rep" style="display:none; border:none; background:none; color:var(--ink-soft); font-size:12px; text-decoration:underline; cursor:pointer; padding:0;">↩ Undo</button>
+      </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-primary btn-block" id="repSuccess">✓ Success</button>
         <button class="btn btn-ghost btn-block" id="repMiss">✗ No luck</button>
@@ -1982,9 +2180,16 @@ function renderSessionScreen(){
     container.querySelector("#repBreakdown").textContent = total
       ? `successful${total>=3?" · 🔥 "+pct+"% success rate":""}`
       : "successful, 0 so far";
+    container.querySelector("#undoRepBtn").style.display = total ? "inline" : "none";
   }
   container.querySelector("#repSuccess").addEventListener("click", ()=>{ session.reps.push(true); paint(); sk.speak(sk.praiseWordFor(dog)); });
   container.querySelector("#repMiss").addEventListener("click", ()=>{ session.reps.push(false); paint(); sk.speak("Okay, next one"); });
+  container.querySelector("#undoRepBtn").addEventListener("click", ()=>{
+    if(!session.reps.length) return;
+    session.reps.pop();
+    paint();
+    sk.speak("Undone");
+  });
   container.querySelector("#clickerBtn").addEventListener("click", sk.playClickSound);
   container.querySelector("#repeatStepsBtn").addEventListener("click", ()=>{ speakSteps(); if(sk.isVoiceEnabled()) highlightStepsInSequence(); });
   container.querySelector("#finishBtn").addEventListener("click", ()=>{
@@ -2528,6 +2733,7 @@ function renderMore(container){
         </button>`).join("")}
       <button class="row" id="addDogRow"><div class="avatar" style="background:var(--line); color:var(--ink-soft);">+</div><div class="row-body"><div class="row-title">Add another dog</div></div></button>
       ${sk.DB.dogs.length > 1 ? `<button class="row" id="compareDogsRow"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">Compare dogs</div><div class="row-meta">Progress side by side</div></div><span class="row-chev">›</span></button>` : ""}
+      <button class="row" id="trackWeightRow"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">⚖️ Track weight</div><div class="row-meta">Log and chart weight over time</div></div><span class="row-chev">›</span></button>
     </div>
 
     <div class="section-label" role="heading" aria-level="2">Daily programmes</div>
@@ -2578,6 +2784,13 @@ function renderMore(container){
           <span style="position:absolute; top:2px; left:${voiceOn?'21px':'2px'}; width:23px; height:23px; border-radius:50%; background:#fff; transition:left 0.15s;"></span>
         </button>
       </div>
+      ${voiceOn ? `
+      <div style="margin-top:12px;">
+        <label for="voiceSelect" style="font-size:12.5px; color:var(--ink-soft); display:block; margin-bottom:6px;">Voice</label>
+        <select id="voiceSelect" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--line); background:var(--canvas-raised); color:var(--ink);">
+          <option value="">Device default</option>
+        </select>
+      </div>` : ""}
       <div style="border-top:1px solid var(--line); margin-top:14px; padding-top:14px; display:flex; align-items:center; gap:12px;">
         <div style="flex:1;">
           <div style="font-weight:600; font-size:14px;">Quiet hours</div>
@@ -2623,6 +2836,7 @@ function renderMore(container){
       <button class="btn btn-ghost btn-block" id="importBtn" style="margin-top:8px;">Import backup</button>
       <input type="file" id="importFile" accept="application/json" style="display:none;">
       <button class="btn btn-secondary btn-block" id="reportBtn" style="margin-top:8px;">Training report (shareable summary)</button>
+      <button class="btn btn-secondary btn-block" id="certBtn" style="margin-top:8px;">🏅 Certificate of achievement</button>
       <button class="btn btn-secondary btn-block" id="printLogBtn" style="margin-top:8px;">Print / export full training log</button>
       <button class="btn btn-danger btn-block" id="resetBtn" style="margin-top:8px;">Reset all data</button>
     </div>
@@ -2641,6 +2855,7 @@ function renderMore(container){
   container.querySelector("#addDogRow").addEventListener("click", ()=>sk.renderDogForm(null));
   const compareBtn = container.querySelector("#compareDogsRow");
   if(compareBtn) compareBtn.addEventListener("click", openCompareDogs);
+  container.querySelector("#trackWeightRow").addEventListener("click", ()=>sk.openWeightTracker());
   container.querySelectorAll("[data-programme]").forEach(r=>r.addEventListener("click", ()=>openProgrammeDetail(r.dataset.programme)));
   container.querySelector("#safetyRow").addEventListener("click", openSafetyReference);
   container.querySelector("#mythsRow").addEventListener("click", openMythsReference);
@@ -2663,6 +2878,25 @@ function renderMore(container){
     renderMore(container); // repaint so the switch position and aria-checked update
     if(now) sk.speak("Voice guidance on");
   });
+  const voiceSelect = container.querySelector("#voiceSelect");
+  if(voiceSelect){
+    function populateVoiceOptions(){
+      const voices = sk.getAvailableVoices().filter(v=>v.lang && v.lang.startsWith("en"));
+      const selectedURI = sk.getSelectedVoiceURI();
+      const list = voices.length ? voices : sk.getAvailableVoices(); // fall back to all if no English voices reported
+      voiceSelect.innerHTML = '<option value="">Device default</option>' +
+        list.map(v=>`<option value="${sk.esc(v.voiceURI)}"${v.voiceURI===selectedURI?" selected":""}>${sk.esc(v.name)}${v.lang?" ("+sk.esc(v.lang)+")":""}</option>`).join("");
+    }
+    populateVoiceOptions();
+    // Voice lists load asynchronously in some browsers -- repopulate once
+    // the browser actually finishes enumerating them, so the dropdown
+    // doesn't stay stuck on just "Device default" on a first-ever visit.
+    if("speechSynthesis" in window) window.speechSynthesis.addEventListener("voiceschanged", populateVoiceOptions, {once:true});
+    voiceSelect.addEventListener("change", ()=>{
+      sk.setSelectedVoiceURI(voiceSelect.value);
+      sk.speak("This is how I'll sound during training.");
+    });
+  }
   container.querySelector("#quietHoursToggle").addEventListener("click", ()=>{
     const q = sk.getQuietHours();
     sk.setQuietHours(!q.enabled, q.start, q.end);
@@ -2686,6 +2920,7 @@ function renderMore(container){
   container.querySelector("#exportBtn").addEventListener("click", exportBackup);
   container.querySelector("#printLogBtn").addEventListener("click", openPrintableLog);
   container.querySelector("#reportBtn").addEventListener("click", openTrainingReport);
+  container.querySelector("#certBtn").addEventListener("click", openCertificate);
   container.querySelector("#importBtn").addEventListener("click", ()=>container.querySelector("#importFile").click());
   container.querySelector("#importFile").addEventListener("change", importBackup);
   container.querySelector("#resetBtn").addEventListener("click", confirmReset);
@@ -2806,7 +3041,10 @@ function renderProgrammeBlock(){
       <h3 style="margin-top:10px;">${sk.esc(l.title)}</h3>
       <p style="font-size:13px; color:var(--ink-soft);">${sk.esc(l.objective)}</p>
       <div style="font-size:40px; font-weight:700; font-family:var(--font-display); margin:12px 0 4px;" id="repCounter">0</div>
-      <div style="font-size:13px; color:var(--ink-soft); margin-bottom:16px;" id="repBreakdown">0 successful</div>
+      <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:16px;">
+        <div style="font-size:13px; color:var(--ink-soft);" id="repBreakdown">0 successful</div>
+        <button type="button" id="undoRepBtn" aria-label="Undo last rep" style="display:none; border:none; background:none; color:var(--ink-soft); font-size:12px; text-decoration:underline; cursor:pointer; padding:0;">↩ Undo</button>
+      </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-primary btn-block" id="repSuccess">✓ Success</button>
         <button class="btn btn-ghost btn-block" id="repMiss">✗ No luck</button>
@@ -2854,9 +3092,16 @@ function renderProgrammeBlock(){
     const succ = reps.filter(r=>r).length;
     container.querySelector("#repCounter").textContent = reps.length;
     container.querySelector("#repBreakdown").textContent = succ+" successful";
+    container.querySelector("#undoRepBtn").style.display = reps.length ? "inline" : "none";
   }
   container.querySelector("#repSuccess").addEventListener("click", ()=>{ reps.push(true); paint(); sk.speak(sk.praiseWordFor(dog)); });
   container.querySelector("#repMiss").addEventListener("click", ()=>{ reps.push(false); paint(); sk.speak("Okay, next one"); });
+  container.querySelector("#undoRepBtn").addEventListener("click", ()=>{
+    if(!reps.length) return;
+    reps.pop();
+    paint();
+    sk.speak("Undone");
+  });
   container.querySelector("#clickerBtn").addEventListener("click", sk.playClickSound);
   container.querySelector("#repeatStepsBtn").addEventListener("click", ()=>{ speakSteps(); if(sk.isVoiceEnabled()) highlightStepsInSequence(); });
   container.querySelector("#nextBlockBtn").addEventListener("click", ()=>{
@@ -3178,9 +3423,40 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "5.3.0";
+const APP_VERSION = "6.4.0";
 
 const CHANGELOG = [
+  { version: "6.4.0", notes: [
+    "29 more lessons given real photos across two large batches: novel-object shaping, child-dog greetings, toilet training (outdoor and indoor-pad variants), furniture access boundaries, redirect-to-chew, ear handling, clippers introduction, plus 8 more Settle variants (handler movement, mild distraction, extended duration, owner walking away) and 8 more Threshold-distance variants (joggers, delivery vans, cyclists, dog-to-dog at various distances)",
+    "125 lessons now have a real photo, up from 96",
+  ]},
+  { version: "6.3.0", notes: [
+    "13 more lessons given real photos: 4 additional Recall contexts (open field, whistle cue, past sniffing, toy reward), plus Leaving dropped food, Find it enrichment, Muzzle training, Paw handling, Recall from another room, Pairing household sounds (vacuum), Crate resting, Trading a familiar chew, and Staying calm around runners",
+  ]},
+  { version: "6.2.0", notes: [
+    "Games now shows real photos on all 13 tiles instead of colored placeholder circles — applied as proper lesson media, so the same images also show on those lessons' own detail pages, not just the tile grid",
+  ]},
+  { version: "6.1.0", notes: [
+    "Refreshed the app icon everywhere it appears — the PWA install icons (all 3 sizes, including a properly re-centred maskable version), and the small icon in the top bar, which now matches the wordmark logo's letterform exactly",
+    "Fixed a real inconsistency caught in the process: the old top bar icon actually inverted its colours in dark mode (a darker S on a lighter green), while the full logo lockup used a constant forest-green-with-cream-S treatment in both themes. The new icon now matches the wordmark's consistent approach in both themes",
+    "The certificate now shows a proper gold seal-and-ribbon medallion instead of a generic medal emoji",
+    "The weight tracker now opens with a real photo header instead of straight into a form",
+  ]},
+  { version: "6.0.0", notes: [
+    "New: Games (Home → 🎮 Games) — a playful, illustrated grid into 13 curated Enrichment and Tricks & Games lessons already in the library (cardboard searching, hide and seek, the cup game, recall races, and more). Not new content — a more fun front door onto lessons that already existed, each tile opens the real lesson with a ✓ Done badge once completed",
+    "New: Certificate of achievement (Profile → 🏅) — a landscape, decoratively-bordered certificate reflecting the dog's actual completed-lesson count and top categories, printable/saveable as a PDF the same way as the training report. Unlocks after 10 completed lessons, with a friendly progress message before that",
+    "New: Track weight (Profile → ⚖️) — log weight entries with date and kg/lb, view them as a dependency-free SVG trend chart once there are at least two entries, and delete entries from a history list",
+    "Fixed a real bug caught before it ever shipped: the Games feature's \"already completed\" check was called with the wrong function signature, which would have silently failed to show the done badge for any completed game",
+    "Fixed a genuine layout bug in the certificate: the on-screen preview used the same fixed landscape aspect ratio as the print version, which overflowed and clipped the title on a narrow phone screen. The landscape ratio now applies only when actually printing",
+  ]},
+  { version: "5.5.0", notes: [
+    "Fixed a real dark-mode bug: the highlighted \"current step\" during a session used a light background with light text, at a contrast ratio of roughly 1:1 — effectively invisible. Now uses a dark green that reads clearly against the highlight in both themes",
+    "New: a Voice picker (Profile → Voice guidance) — choose from whatever voices your browser and device offer, rather than being stuck with the system default",
+    "Fixed a genuine bug caught while building the voice picker: if a saved voice preference ever failed to apply for any reason, the entire spoken message was being silently dropped instead of falling back to the default voice — the exact opposite of what a reliability feature should do. Voice assignment now fails safely on its own, separate from whether the message gets spoken at all",
+  ]},
+  { version: "5.4.0", notes: [
+    "New: Undo last rep — a small \"↩ Undo\" link appears next to the rep count as soon as you've logged one, for fixing a stray tap without finishing the whole session. Works in both single-lesson sessions and daily-programme blocks",
+  ]},
   { version: "5.3.0", notes: [
     "New: Gender (Male / Female / Unknown) when adding or editing a dog — voice guidance now says \"Good boy\", \"Good girl\", or \"Good dog\" on a successful rep to match, defaulting sensibly to \"Good dog\" for existing profiles saved before this existed. \"Okay, next one\" on a miss is unchanged either way",
     "New, experimental: a \"try to play even on silent mode\" toggle for the clicker (Profile → Clicker), off by default. This uses an undocumented iOS Safari behaviour — keeping a barely-audible looping sound actively playing can sometimes bump the whole page's audio out of the category that respects the mute switch. It's genuinely not guaranteed to work on every device, and Apple could change this at any time, so it's opt-in and labelled clearly as experimental rather than promised as a fix",
@@ -3767,6 +4043,60 @@ function openLessonPrintView(l){
   document.body.appendChild(overlay);
   document.getElementById("lessonPrintClose").addEventListener("click", ()=>overlay.remove());
   document.getElementById("lessonPrintGo").addEventListener("click", ()=>window.print());
+}
+
+// A landscape, decoratively-bordered certificate -- printable/saveable as a
+// PDF using the same browser print mechanism as the other print views.
+// Gated on a modest lesson-count threshold so it reflects genuine progress
+// rather than being available from the very first session.
+const CERTIFICATE_THRESHOLD = 10;
+function openCertificate(){
+  const dog = sk.getCurrentDog();
+  if(!dog){ sk.showToast("Add a dog first."); return; }
+  const lessonsCompleted = sk.totalLessonsCompleted(dog.id);
+  if(lessonsCompleted < CERTIFICATE_THRESHOLD){
+    sk.openModal(`
+      <h3 style="text-align:center;">Certificate</h3>
+      <p style="text-align:center; color:var(--ink-soft); font-size:14px; margin-top:8px;">
+        ${sk.esc(dog.name)} has completed ${lessonsCompleted} of ${CERTIFICATE_THRESHOLD} lessons needed to unlock a certificate. Keep training — not far to go!
+      </p>
+    `);
+    return;
+  }
+  const categoryCounts = {};
+  sk.KB.collections.lessons.forEach(l=>{
+    if(sk.DB.lessonProgress[dog.id]?.[l.lesson_id]) categoryCounts[l.category] = (categoryCounts[l.category]||0)+1;
+  });
+  const topCategories = Object.entries(categoryCounts).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([c])=>c);
+  const generatedDate = new Date().toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});
+
+  const overlay = document.createElement("div");
+  overlay.id = "certificateOverlay";
+  overlay.className = "print-overlay";
+  overlay.innerHTML = `
+    <div class="print-toolbar no-print">
+      <button class="btn btn-ghost" id="certClose">← Back</button>
+      <button class="btn btn-primary" id="certGo">🖨️ Print / Save as PDF</button>
+    </div>
+    <div class="certificate-page">
+      <div class="certificate-inner">
+        <img src="images/certificate-medal.png" alt="" style="width:80px; height:80px; object-fit:contain;">
+        <div class="certificate-title">Certificate of Achievement</div>
+        <div class="certificate-sub">Reward-Based Training</div>
+        <div class="certificate-dogname">${sk.esc(dog.name)}</div>
+        <div class="certificate-body">
+          has successfully completed <strong>${lessonsCompleted} training lessons</strong>${topCategories.length ? `, building skills in ${topCategories.map(c=>sk.esc(c)).join(", ")}` : ""}, using calm, positive, reward-based methods.
+        </div>
+        <div class="certificate-footer">
+          <div>Generated ${generatedDate}</div>
+          <div>Sidekick — reward-based dog training</div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById("certClose").addEventListener("click", ()=>overlay.remove());
+  document.getElementById("certGo").addEventListener("click", ()=>window.print());
 }
 
 function openTrainingReport(){
