@@ -3690,9 +3690,13 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "8.1.0";
+const APP_VERSION = "8.2.0";
 
 const CHANGELOG = [
+  { version: "8.2.0", notes: [
+    "New: Portrait certificates — a phone-friendly alternative to the landscape print version, toggle between them right from the certificate view with the same Print and Download PDF options working for whichever is showing",
+    "The Certificates screen now opens with a real photo header",
+  ]},
   { version: "8.1.0", notes: [
     "New: hidden achievements — surprise badges that only appear once earned, unlike the visible certificates which show progress toward them. First Steps (first lesson), Week Warrior (7-day training streak), Iron Will (30-day streak), Dedicated Walker (7-day walk streak), Clicker Novice (100 lifetime clicks), and Clicker Master (1000 clicks). Each fires an immediate toast the moment it unlocks, then appears permanently in a \"Bonus achievements\" section at the bottom of the Certificates screen",
     "Fixed a real bug caught during testing, not shipped blind: the click- and walk-based achievement checks were silently failing on every single trigger, because the code assumed a shortcut alias (\"sk\") that doesn't exist in that particular part of the file — every other reference there correctly spells out the full name instead. The click counter was incrementing fine the whole time; only the achievement check itself was silently never running, hidden by a try/catch that was meant to hide unrelated audio errors, not this",
@@ -4395,6 +4399,7 @@ function openCertificateList(){
   const certs = getCertificateProgress(dog.id);
   const unlockedHidden = sk.HIDDEN_ACHIEVEMENTS.filter(a=>sk.DB.hiddenAchievements.includes(a.id));
   sk.openModal(`
+    <img src="images/hero-certificates.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;">
     <h3 style="text-align:center; margin-bottom:4px;">Certificates</h3>
     <p style="text-align:center; color:var(--ink-soft); font-size:13px; margin-bottom:16px;">Earn a certificate for ${sk.esc(dog.name)}'s overall progress, or for fully completing a category.</p>
     <div class="row-list">
@@ -4441,7 +4446,8 @@ function openCertificateList(){
 }
 
 // The actual generated, printable certificate for one specific achievement.
-function openCertificateView(dog, cert){
+function openCertificateView(dog, cert, format){
+  format = format || "landscape";
   // The signature font is only needed here, so it's loaded on demand rather
   // than adding a network dependency to every page load.
   if(!document.getElementById("certFontLink")){
@@ -4453,21 +4459,14 @@ function openCertificateView(dog, cert){
   }
 
   const generatedDate = new Date().toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});
+  const subtitle = cert.type==="general" ? "Reward-Based Training" : cert.type==="games" ? "Play &amp; Enrichment" : sk.esc(cert.category);
   const bodyText = cert.type === "general"
     ? `for successfully completing <strong>${cert.completed} training lessons</strong>, using calm, positive, reward-based methods.`
     : cert.type === "games"
     ? `for playing and completing <strong>every game</strong> in Sidekick — a true master of play, bonding, and enrichment.`
     : `for successfully completing the <strong>${sk.esc(cert.category)}</strong> training category in full, using calm, positive, reward-based methods.`;
 
-  const overlay = document.createElement("div");
-  overlay.id = "certificateOverlay";
-  overlay.className = "print-overlay";
-  overlay.innerHTML = `
-    <div class="print-toolbar no-print">
-      <button class="btn btn-ghost" id="certClose">← Back</button>
-      <button class="btn btn-primary" id="certGo">🖨️ Print</button>
-      <button class="btn btn-secondary" id="certDownload">⬇️ Download PDF</button>
-    </div>
+  const landscapeHTML = `
     <div class="certificate-page">
       <div class="certificate-inner">
         <img src="images/certificate-background.jpg" alt="" class="certificate-bg-watermark">
@@ -4475,7 +4474,7 @@ function openCertificateView(dog, cert){
         <img src="images/holo-icon.png" alt="" class="certificate-holo">
         <img src="images/certificate-medal.png" alt="" style="width:88px; height:88px; object-fit:contain; position:relative;">
         <div class="certificate-title" style="position:relative;">Certificate of Achievement</div>
-        <div class="certificate-sub" style="position:relative;">${cert.type==="general"?"Reward-Based Training":cert.type==="games"?"Play &amp; Enrichment":sk.esc(cert.category)}</div>
+        <div class="certificate-sub" style="position:relative;">${subtitle}</div>
         <div class="certificate-awardedto" style="position:relative;">Awarded to</div>
         <div class="certificate-dogname" style="position:relative;">${sk.esc(dog.name)}</div>
         <div class="certificate-body" style="position:relative;">${bodyText}</div>
@@ -4489,10 +4488,60 @@ function openCertificateView(dog, cert){
       </div>
     </div>
   `;
+
+  // Phone-friendly alternative -- same content and brand elements, laid out
+  // tall for a screen or a phone-shaped print rather than a landscape page.
+  const portraitHTML = `
+    <div class="certificate-page-portrait">
+      <div class="certificate-inner-portrait">
+        <img src="images/certificate-background.jpg" alt="" class="certificate-bg-watermark">
+        <img src="images/logo-lockup-light.png" alt="Sidekick" class="certificate-portrait-logo">
+        <img src="images/certificate-medal.png" alt="" class="certificate-portrait-medal">
+        <div class="certificate-portrait-title">Certificate of<br>Achievement</div>
+        <div class="certificate-portrait-sub">${subtitle}</div>
+        <div class="certificate-portrait-rule"></div>
+        <div class="certificate-portrait-awardedto">Awarded to</div>
+        <div class="certificate-portrait-dogname">${sk.esc(dog.name)}</div>
+        <div class="certificate-portrait-rule"></div>
+        <div class="certificate-portrait-body">${bodyText}</div>
+        <div class="certificate-portrait-signoff">
+          <div class="certificate-portrait-signoff-label">Awarded by</div>
+          <div class="certificate-portrait-signoff-name">Duffers</div>
+          <div class="certificate-portrait-footer">
+            <div class="date">${generatedDate}</div>
+            <div>Sidekick — Reward-based dog training</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const overlay = document.createElement("div");
+  overlay.id = "certificateOverlay";
+  overlay.className = "print-overlay";
+  overlay.innerHTML = `
+    <div class="print-toolbar no-print">
+      <button class="btn btn-ghost" id="certClose">← Back</button>
+      <div class="chip-group" id="certFormatToggle" style="margin-bottom:0;">
+        <button type="button" class="chip${format==="landscape"?" selected":""}" data-format="landscape">🖨️ Landscape</button>
+        <button type="button" class="chip${format==="portrait"?" selected":""}" data-format="portrait">📱 Portrait</button>
+      </div>
+    </div>
+    <div class="print-toolbar no-print" style="border-top:none;">
+      <button class="btn btn-primary btn-block" id="certGo">🖨️ Print</button>
+      <button class="btn btn-secondary btn-block" id="certDownload">⬇️ Download PDF</button>
+    </div>
+    ${format==="portrait" ? portraitHTML : landscapeHTML}
+  `;
   document.body.appendChild(overlay);
   document.getElementById("certClose").addEventListener("click", ()=>overlay.remove());
   document.getElementById("certGo").addEventListener("click", ()=>window.print());
   document.getElementById("certDownload").addEventListener("click", ()=>downloadCertificatePDF(dog, overlay));
+  document.getElementById("certFormatToggle").addEventListener("click", e=>{
+    const b = e.target.closest(".chip"); if(!b || b.dataset.format===format) return;
+    overlay.remove();
+    openCertificateView(dog, cert, b.dataset.format);
+  });
 }
 
 // Loads a script from a CDN on demand and caches the promise, so repeated
@@ -4524,7 +4573,7 @@ async function downloadCertificatePDF(dog, overlay){
   try{
     await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
     await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-    const target = overlay.querySelector(".certificate-page");
+    const target = overlay.querySelector(".certificate-page, .certificate-page-portrait");
     const canvas = await window.html2canvas(target, { scale:2, useCORS:true, backgroundColor:"#ffffff" });
     const imgData = canvas.toDataURL("image/jpeg", 0.95);
     const { jsPDF } = window.jspdf;

@@ -455,6 +455,39 @@ textarea{resize:vertical; min-height:70px;}
 .certificate-sig-text{font-family:'Caveat', cursive; font-size:34px; color:#1F3A24; line-height:1;}
 .certificate-sig-line{border-top:1px solid #999; margin-top:2px; padding-top:3px; font-size:11px; color:#777; min-width:120px;}
 .certificate-footer{position:relative; z-index:1; text-align:center; font-size:11px; letter-spacing:0.08em; color:#888; text-transform:uppercase; padding:0 46px;}
+
+/* Portrait certificate -- a phone-friendly alternative to the landscape
+   print version, sharing the same content and brand elements but laid out
+   for a tall screen rather than a printed page. */
+.certificate-page-portrait{
+  width:100%; max-width:420px; margin:20px auto;
+  border:3px solid #2F5233; padding:10px; box-sizing:border-box;
+  aspect-ratio:2/3;
+}
+@media print{
+  .certificate-page-portrait{ size:portrait; max-width:none; aspect-ratio:auto; height:95vh; }
+}
+.certificate-inner-portrait{
+  position:relative; overflow:hidden; height:100%;
+  border:1.5px solid #986E22; box-sizing:border-box;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center; padding:22px 20px; font-family:var(--font-body);
+  background:#FBF8F0;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact;
+}
+.certificate-portrait-logo{position:absolute; top:12px; left:14px; height:18px; width:auto; z-index:1;}
+.certificate-portrait-medal{width:30%; max-width:100px; object-fit:contain; position:relative; z-index:1; margin-bottom:8px;}
+.certificate-portrait-title{position:relative; z-index:1; font-family:var(--font-display); font-size:19px; color:#1F2A21; font-weight:700; margin:2px 0; line-height:1.15;}
+.certificate-portrait-sub{position:relative; z-index:1; font-size:9px; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.14em; margin-bottom:10px;}
+.certificate-portrait-rule{position:relative; z-index:1; width:44px; height:2px; background:#986E22; margin:8px 0;}
+.certificate-portrait-awardedto{position:relative; z-index:1; font-size:9px; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.14em; margin-bottom:2px;}
+.certificate-portrait-dogname{position:relative; z-index:1; font-family:var(--font-display); font-size:26px; font-weight:700; color:#2F5233; margin:2px 0;}
+.certificate-portrait-body{position:relative; z-index:1; font-size:11px; color:#333; line-height:1.5; max-width:280px; margin:8px 0;}
+.certificate-portrait-signoff{position:relative; z-index:1; width:100%; max-width:260px; border-top:1px solid #ccc; margin-top:12px; padding-top:10px;}
+.certificate-portrait-signoff-label{font-size:8.5px; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.14em; margin-bottom:3px;}
+.certificate-portrait-signoff-name{font-family:var(--font-display); font-weight:700; font-size:14px; color:#2F5233; border-bottom:1px solid #ccc; display:inline-block; padding-bottom:6px; margin-bottom:10px;}
+.certificate-portrait-footer{font-size:9px; color:#999;}
+.certificate-portrait-footer .date{margin-bottom:2px;}
 </style>
 </head>
 <body data-theme="auto">
