@@ -393,10 +393,12 @@ textarea{resize:vertical; min-height:70px;}
 }
 .print-toolbar{
   position:sticky; top:0; z-index:2; display:flex; flex-direction:column; gap:8px;
-  padding:10px 14px; background:var(--canvas-raised); border-bottom:1px solid var(--line);
+  padding:calc(10px + env(safe-area-inset-top)) 14px 10px; background:var(--canvas-raised); border-bottom:1px solid var(--line);
 }
 .print-toolbar-row{display:flex; gap:8px; align-items:center;}
 .print-toolbar-row .btn{flex:1; white-space:nowrap;}
+.print-toolbar-row .chip-group{flex-wrap:nowrap; flex:1; margin-bottom:0;}
+.print-toolbar-row .chip-group .chip{flex:1; text-align:center; white-space:nowrap;}
 .print-page{
   max-width:640px; margin:0 auto; padding:24px 20px 60px; color:var(--ink);
 }
@@ -427,83 +429,90 @@ textarea{resize:vertical; min-height:70px;}
   .certificate-page{ size:landscape; max-width:none; }
   .certificate-page-portrait{ size:portrait; max-width:none; }
   @page{ margin:0.3in; }
+  /* Printing always uses the full fixed design size, undoing the on-screen
+     preview scale -- the browser's own print engine scales that to the
+     physical paper, the same way it's always handled scaling any page. */
+  .certificate-inner, .certificate-inner-portrait{ transform:none !important; }
 }
 
-/* Both certificate shapes use CSS container query units (cqw) for every
-   internal font-size, gap and icon size, rather than fixed px values. This
-   is deliberate: a landscape or portrait certificate is a fixed-proportion
-   "card", and needs to look identical (same balance of title/name/text
-   sizes) whether it's rendered at 390px on a phone, 900px on a desktop
-   modal, or full-resolution inside a PDF. Fixed px values previously meant
-   the same design broke at each of those sizes independently -- cqw makes
-   every internal measurement scale together with the container's own
-   width, which is what "container-type: inline-size" on the outer
-   .certificate-page/-portrait elements enables for their descendants. */
+/* Both certificate shapes are built at a fixed pixel "design size" (never
+   resized by CSS units relative to their container) and then visually
+   scaled down to fit whatever space they're actually shown in, via a
+   JS-computed transform:scale() -- see scaleCertificateToFit() in app.js.
+   This was previously done with CSS container query units (cqw), which
+   turned out to be a real problem: html2canvas (the library used for the
+   one-click PDF download) doesn't reliably support that newer CSS feature,
+   which was silently causing the background image to not render in
+   captures and the whole download to hang. transform:scale() is a much
+   older, universally-supported CSS feature with none of that risk, and
+   for PDF/print purposes the transform is simply removed so the capture
+   happens at full, un-scaled design resolution. */
 .certificate-page{
-  container-type:inline-size;
-  width:100%; max-width:900px; margin:20px auto;
-  aspect-ratio:1.6/1;
-  border:0.33cqw solid #2F5233; padding:1.33cqw; box-sizing:border-box;
+  width:100%; max-width:900px; margin:20px auto; aspect-ratio:1.6/1;
+  overflow:hidden; position:relative;
+  border:3px solid #2F5233; box-sizing:border-box;
 }
 .certificate-inner{
-  position:relative; overflow:hidden; height:100%;
-  border:0.17cqw solid #986E22; box-sizing:border-box;
+  position:absolute; top:0; left:0; transform-origin:top left;
+  width:900px; height:562.5px;
+  border:1.5px solid #986E22; box-sizing:border-box;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  text-align:center; padding:4cqw 2.5cqw; font-family:var(--font-body);
+  text-align:center; padding:36px 24px; font-family:var(--font-body);
   background:#FBF8F0;
 }
 .certificate-bg-watermark{
   position:absolute; top:0; left:0;
-  width:100%; height:100%; object-fit:cover; opacity:0.07; z-index:0; pointer-events:none;
+  width:100%; height:100%; object-fit:cover; opacity:0.09; z-index:0; pointer-events:none;
   -webkit-print-color-adjust:exact; print-color-adjust:exact;
 }
-.certificate-holo{position:absolute; bottom:1.5cqw; right:1.7cqw; width:5.5cqw; height:5.5cqw; z-index:1;}
-.certificate-logo{position:absolute; top:1.5cqw; left:1.7cqw; height:2.4cqw; width:auto; z-index:1;}
-.certificate-medal-img{width:9.8cqw; height:9.8cqw; object-fit:contain; position:relative; z-index:1; margin-bottom:0.5cqw;}
-.certificate-title{position:relative; z-index:1; font-family:var(--font-display); font-size:2.9cqw; color:#2F5233; margin:0 0 0.2cqw; letter-spacing:0.01em;}
-.certificate-sub{position:relative; z-index:1; font-size:1.4cqw; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.15em; margin-bottom:2.8cqw;}
-.certificate-awardedto{position:relative; z-index:1; font-size:1.3cqw; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.15em; margin-bottom:0.8cqw;}
-.certificate-dogname{position:relative; z-index:1; font-family:var(--font-display); font-size:5.8cqw; color:#986E22; margin:0 0 2.8cqw; border-bottom:0.2cqw solid #986E22; display:inline-block; padding:0 2.4cqw 1cqw;}
-.certificate-body{position:relative; z-index:1; font-size:1.7cqw; color:#333; max-width:62%; line-height:1.6; margin-bottom:3.2cqw;}
-.certificate-signoff{position:relative; z-index:1; text-align:center; margin-bottom:2.8cqw;}
-.certificate-sig-img{height:4.6cqw; width:auto; display:block; margin:0 auto;}
-.certificate-sig-text{font-family:'Caveat', cursive; font-size:3.8cqw; color:#1F3A24; line-height:1;}
-.certificate-sig-line{border-top:0.1cqw solid #999; margin-top:0.2cqw; padding-top:0.3cqw; font-size:1.2cqw; color:#777; min-width:13cqw;}
-.certificate-footer{position:relative; z-index:1; text-align:center; font-size:1.2cqw; letter-spacing:0.08em; color:#888; text-transform:uppercase; padding:0 5cqw;}
+.certificate-holo{position:absolute; bottom:14px; right:16px; width:50px; height:50px; z-index:1;}
+.certificate-logo{position:absolute; top:14px; left:16px; height:22px; width:auto; z-index:1;}
+.certificate-medal-img{width:80px; height:80px; object-fit:contain; position:relative; z-index:1; margin-bottom:4px;}
+.certificate-title{position:relative; z-index:1; font-family:var(--font-display); font-size:26px; color:#2F5233; margin:0 0 2px; letter-spacing:0.01em;}
+.certificate-sub{position:relative; z-index:1; font-size:13px; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.15em; margin-bottom:24px;}
+.certificate-awardedto{position:relative; z-index:1; font-size:12px; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.15em; margin-bottom:7px;}
+.certificate-dogname{position:relative; z-index:1; font-family:var(--font-display); font-size:50px; color:#986E22; margin:0 0 24px; border-bottom:2px solid #986E22; display:inline-block; padding:0 22px 9px;}
+.certificate-body{position:relative; z-index:1; font-size:15px; color:#333; max-width:560px; line-height:1.55; margin-bottom:26px;}
+.certificate-signoff{position:relative; z-index:1; text-align:center; margin-bottom:22px;}
+.certificate-sig-img{height:42px; width:auto; display:block; margin:0 auto;}
+.certificate-sig-text{font-family:'Caveat', cursive; font-size:32px; color:#1F3A24; line-height:1;}
+.certificate-sig-line{border-top:1px solid #999; margin-top:2px; padding-top:3px; font-size:11px; color:#777; min-width:118px;}
+.certificate-footer{position:relative; z-index:1; text-align:center; font-size:11px; letter-spacing:0.08em; color:#888; text-transform:uppercase; padding:0 46px;}
 
 /* Portrait certificate -- a phone-friendly alternative to the landscape
    print version, sharing the exact same content and brand elements (logo,
    medal, holo mark, background, signature treatment) but laid out for a
-   tall shape rather than a wide one. Same cqw-scaling approach as landscape. */
+   tall shape rather than a wide one. Same fixed-design-then-transform
+   approach as landscape. */
 .certificate-page-portrait{
-  container-type:inline-size;
-  width:100%; max-width:420px; margin:20px auto;
-  aspect-ratio:2/3;
-  border:0.7cqw solid #2F5233; padding:2.4cqw; box-sizing:border-box;
+  width:100%; max-width:420px; margin:20px auto; aspect-ratio:2/3;
+  overflow:hidden; position:relative;
+  border:3px solid #2F5233; box-sizing:border-box;
 }
 .certificate-inner-portrait{
-  position:relative; overflow:hidden; height:100%;
-  border:0.36cqw solid #986E22; box-sizing:border-box;
+  position:absolute; top:0; left:0; transform-origin:top left;
+  width:420px; height:630px;
+  border:1.5px solid #986E22; box-sizing:border-box;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  text-align:center; padding:5.2cqw 4.8cqw; font-family:var(--font-body);
+  text-align:center; padding:32px 28px; font-family:var(--font-body);
   background:#FBF8F0;
   -webkit-print-color-adjust:exact; print-color-adjust:exact;
 }
-.certificate-portrait-logo{position:absolute; top:2.9cqw; left:3.3cqw; height:4.3cqw; width:auto; z-index:1;}
-.certificate-portrait-holo{position:absolute; bottom:2.9cqw; right:3.3cqw; width:11cqw; height:11cqw; z-index:1;}
-.certificate-portrait-medal{width:24cqw; object-fit:contain; position:relative; z-index:1; margin-bottom:1.9cqw;}
-.certificate-portrait-title{position:relative; z-index:1; font-family:var(--font-display); font-size:4.5cqw; color:#2F5233; font-weight:700; margin:0.5cqw 0; letter-spacing:0.01em; line-height:1.15;}
-.certificate-portrait-sub{position:relative; z-index:1; font-size:2.1cqw; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.14em; margin-bottom:2.4cqw;}
-.certificate-portrait-rule{position:relative; z-index:1; width:10.5cqw; height:0.48cqw; background:#986E22; margin:1.9cqw 0;}
-.certificate-portrait-awardedto{position:relative; z-index:1; font-size:2.1cqw; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.14em; margin-bottom:0.5cqw;}
-.certificate-portrait-dogname{position:relative; z-index:1; font-family:var(--font-display); font-size:8.3cqw; color:#986E22; font-weight:700; margin:0.5cqw 0;}
-.certificate-portrait-body{position:relative; z-index:1; font-size:2.6cqw; color:#333; line-height:1.55; max-width:88%; margin:1.9cqw 0;}
-.certificate-portrait-signoff{position:relative; z-index:1; margin-top:1.9cqw;}
-.certificate-portrait-sig-img{height:8cqw; width:auto; display:block; margin:0 auto;}
-.certificate-portrait-sig-text{font-family:'Caveat', cursive; font-size:6.7cqw; color:#1F3A24; line-height:1;}
-.certificate-portrait-sig-line{border-top:0.24cqw solid #ccc; margin-top:0.5cqw; padding-top:0.7cqw; font-size:2cqw; color:#8a8a7a; min-width:26cqw; display:inline-block;}
-.certificate-portrait-footer{position:relative; z-index:1; font-size:2.1cqw; color:#999; margin-top:1.9cqw;}
-.certificate-portrait-footer .date{margin-bottom:0.5cqw;}
+.certificate-portrait-logo{position:absolute; top:12px; left:14px; height:18px; width:auto; z-index:1;}
+.certificate-portrait-holo{position:absolute; bottom:12px; right:14px; width:46px; height:46px; z-index:1;}
+.certificate-portrait-medal{width:100px; object-fit:contain; position:relative; z-index:1; margin-bottom:8px;}
+.certificate-portrait-title{position:relative; z-index:1; font-family:var(--font-display); font-size:19px; color:#2F5233; font-weight:700; margin:2px 0; letter-spacing:0.01em; line-height:1.15;}
+.certificate-portrait-sub{position:relative; z-index:1; font-size:9px; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.14em; margin-bottom:10px;}
+.certificate-portrait-rule{position:relative; z-index:1; width:44px; height:2px; background:#986E22; margin:8px 0;}
+.certificate-portrait-awardedto{position:relative; z-index:1; font-size:9px; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.14em; margin-bottom:2px;}
+.certificate-portrait-dogname{position:relative; z-index:1; font-family:var(--font-display); font-size:35px; color:#986E22; font-weight:700; margin:2px 0;}
+.certificate-portrait-body{position:relative; z-index:1; font-size:11px; color:#333; line-height:1.5; max-width:280px; margin:8px 0;}
+.certificate-portrait-signoff{position:relative; z-index:1; margin-top:8px;}
+.certificate-portrait-sig-img{height:34px; width:auto; display:block; margin:0 auto;}
+.certificate-portrait-sig-text{font-family:'Caveat', cursive; font-size:28px; color:#1F3A24; line-height:1;}
+.certificate-portrait-sig-line{border-top:1px solid #ccc; margin-top:2px; padding-top:3px; font-size:8.5px; color:#8a8a7a; min-width:110px; display:inline-block;}
+.certificate-portrait-footer{position:relative; z-index:1; font-size:9px; color:#999; margin-top:8px;}
+.certificate-portrait-footer .date{margin-bottom:2px;}
 </style>
 </head>
 <body data-theme="auto">

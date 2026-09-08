@@ -3690,9 +3690,14 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "8.3.0";
+const APP_VERSION = "8.4.0";
 
 const CHANGELOG = [
+  { version: "8.4.0", notes: [
+    "Found the likely root cause connecting all three certificate bugs at once: the previous fix used a modern CSS feature (container query units) to make the certificate scale correctly at any size, but html2canvas — the library the one-click PDF download depends on — doesn't reliably support it. That's consistent with the background not rendering in captures and the download hanging indefinitely on \"Generating…\"",
+    "Rebuilt the scaling approach using a fixed-size design visually scaled with a plain CSS transform instead — a much older, universally-supported technique with none of that risk. For PDF/print, the transform is temporarily removed so the capture happens at full, unscaled resolution, then restored afterward either way, even if generation fails",
+    "Fixed the toolbar overlapping the device status bar/notch on a real phone (the sticky toolbar wasn't accounting for the safe area), and fixed the Landscape/Portrait toggle wrapping onto its own line unpredictably by giving it a dedicated row that no longer competes for space with the Back button",
+  ]},
   { version: "8.3.0", notes: [
     "Fixed the real root cause of the cut-off PDF downloads: html2canvas renders at 2x resolution for print sharpness, but that doubled pixel size was being used directly as the PDF page size too — jsPDF interprets \"px\" at 96 DPI, so the page ended up twice the intended size in each direction, and most PDF viewers only show the top-left portion of an oversized page at their default zoom. The page size is now correctly calculated from the certificate's real dimensions, while the embedded image stays full resolution",
     "Fixed the landscape certificate rendering as a tall, portrait-like shape on phones instead of a genuine landscape shape — it never had a fixed aspect ratio on screen, only when printing. Rebuilt both certificate formats to use CSS container query units throughout, so every size and spacing on the certificate scales together correctly and keeps its real shape at any width — a phone, a tablet, a full-width desktop modal, or a PDF export",
@@ -4457,6 +4462,20 @@ function openCertificateList(){
 }
 
 // The actual generated, printable certificate for one specific achievement.
+// Both certificate shapes are built at a fixed pixel "design size" (see the
+// CSS comment on .certificate-page) and visually scaled down to whatever
+// space they're actually shown in. Recomputed on open and on resize so it
+// stays correct if the modal's available width changes (e.g. rotating a
+// phone, or resizing a desktop window).
+function scaleCertificateToFit(overlay, format){
+  const outer = overlay.querySelector(format==="portrait" ? ".certificate-page-portrait" : ".certificate-page");
+  const inner = overlay.querySelector(format==="portrait" ? ".certificate-inner-portrait" : ".certificate-inner");
+  if(!outer || !inner) return;
+  const designWidth = format==="portrait" ? 420 : 900;
+  const scale = outer.clientWidth / designWidth;
+  inner.style.transform = `scale(${scale})`;
+}
+
 function openCertificateView(dog, cert, format){
   format = format || "landscape";
   // The signature font is only needed here, so it's loaded on demand rather
@@ -4552,11 +4571,15 @@ function openCertificateView(dog, cert, format){
     ${format==="portrait" ? portraitHTML : landscapeHTML}
   `;
   document.body.appendChild(overlay);
-  document.getElementById("certClose").addEventListener("click", ()=>overlay.remove());
+  scaleCertificateToFit(overlay, format);
+  const onResize = ()=>scaleCertificateToFit(overlay, format);
+  window.addEventListener("resize", onResize);
+  document.getElementById("certClose").addEventListener("click", ()=>{ window.removeEventListener("resize", onResize); overlay.remove(); });
   document.getElementById("certGo").addEventListener("click", ()=>window.print());
   document.getElementById("certDownload").addEventListener("click", ()=>downloadCertificatePDF(dog, overlay));
   document.getElementById("certFormatToggle").addEventListener("click", e=>{
     const b = e.target.closest(".chip"); if(!b || b.dataset.format===format) return;
+    window.removeEventListener("resize", onResize);
     overlay.remove();
     openCertificateView(dog, cert, b.dataset.format);
   });
@@ -4588,10 +4611,25 @@ async function downloadCertificatePDF(dog, overlay){
   const originalLabel = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Generating…";
+  const isPortrait = !!overlay.querySelector(".certificate-page-portrait");
+  const outer = overlay.querySelector(isPortrait ? ".certificate-page-portrait" : ".certificate-page");
+  const inner = overlay.querySelector(isPortrait ? ".certificate-inner-portrait" : ".certificate-inner");
+  const designWidth = isPortrait ? 420 : 900;
+  const designHeight = isPortrait ? 630 : 562.5;
+  // The on-screen certificate is shown scaled down to fit the modal (see
+  // scaleCertificateToFit) -- for the actual capture, temporarily switch
+  // back to full, unscaled design size so html2canvas gets a clean, full-
+  // resolution render, then restore the on-screen scale afterward either way.
+  const prevOuterWidth = outer.style.width, prevOuterHeight = outer.style.height, prevOuterAspect = outer.style.aspectRatio;
+  const prevTransform = inner.style.transform;
   try{
     await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
     await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-    const target = overlay.querySelector(".certificate-page, .certificate-page-portrait");
+    outer.style.aspectRatio = "auto";
+    outer.style.width = designWidth + "px";
+    outer.style.height = designHeight + "px";
+    inner.style.transform = "none";
+    const target = outer;
     // html2canvas snapshots whatever is in the DOM the instant it's called --
     // if a larger image (the background watermark) hasn't actually finished
     // loading yet, it captures a blank gap where that image belongs rather
@@ -4630,6 +4668,10 @@ async function downloadCertificatePDF(dog, overlay){
     sk.showToast("Couldn't generate the PDF directly — opening print instead.");
     window.print();
   }finally{
+    outer.style.width = prevOuterWidth;
+    outer.style.height = prevOuterHeight;
+    outer.style.aspectRatio = prevOuterAspect;
+    inner.style.transform = prevTransform;
     btn.disabled = false;
     btn.textContent = originalLabel;
   }
