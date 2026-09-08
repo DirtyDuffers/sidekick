@@ -3690,9 +3690,14 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "8.5.0";
+const APP_VERSION = "8.6.0";
 
 const CHANGELOG = [
+  { version: "8.6.0", notes: [
+    "Fixed the certificate visibly expanding beyond the screen while a download was generating — the previous fix temporarily resized the actual on-screen certificate to capture it at full resolution. It now captures an invisible, off-screen clone instead, so the certificate you're looking at is never touched or disrupted during generation",
+    "The failure toast now shows the actual, specific error instead of a generic message — this feature has failed in more than one distinct way across several rounds, so knowing exactly which step failed is what turns the next report into an actual diagnosis rather than another guess",
+    "Added a second CDN as a fallback for both PDF libraries: some ad-blockers and network filters specifically target \"cdnjs\" by name, so if that one is blocked, a different CDN (jsdelivr) now gets a genuine second attempt rather than the whole download failing immediately",
+  ]},
   { version: "8.5.0", notes: [
     "Fixed the download genuinely being able to hang forever: neither the CDN script loading nor the overall generation process had any timeout, so a stalled connection (packets silently dropped, not an active failure) left no way for the code to ever notice and recover. Both now have hard time limits — a hung connection now reliably falls back to a clear message within seconds instead of leaving the button stuck on \"Generating…\" indefinitely",
     "Portrait certificates now download as a real .png image rather than a PDF, since it's meant to be shared as a photo, not printed. Landscape stays a .pdf, aimed at printing and storage. The Download button's label changes to match whichever it'll actually produce",
@@ -4613,6 +4618,19 @@ function loadScriptOnce(url, timeoutMs){
   return _scriptLoadPromises[url];
 }
 
+// Tries each URL in order, falling back to the next on failure -- some
+// ad-blockers and network filters specifically target "cdnjs" by name, so a
+// second CDN (jsdelivr) gives a real chance of success rather than just a
+// clearer error when the first one is blocked rather than genuinely down.
+async function loadScriptWithFallback(urls, timeoutMs){
+  let lastError;
+  for(const url of urls){
+    try{ return await loadScriptOnce(url, timeoutMs || 6000); }
+    catch(e){ lastError = e; }
+  }
+  throw lastError;
+}
+
 // Renders the certificate to a real, directly-downloaded .pdf file.
 // html2canvas + jsPDF are loaded from a CDN only when this is actually
 // used, rather than adding weight to every page load. Falls back to the
@@ -4625,42 +4643,52 @@ async function downloadCertificatePDF(dog, overlay){
   btn.disabled = true;
   btn.textContent = "Generating…";
   const isPortrait = !!overlay.querySelector(".certificate-page-portrait");
-  const outer = overlay.querySelector(isPortrait ? ".certificate-page-portrait" : ".certificate-page");
-  const inner = overlay.querySelector(isPortrait ? ".certificate-inner-portrait" : ".certificate-inner");
+  const liveOuter = overlay.querySelector(isPortrait ? ".certificate-page-portrait" : ".certificate-page");
   const designWidth = isPortrait ? 420 : 900;
   const designHeight = isPortrait ? 630 : 562.5;
-  // The on-screen certificate is shown scaled down to fit the modal (see
-  // scaleCertificateToFit) -- for the actual capture, temporarily switch
-  // back to full, unscaled design size so html2canvas gets a clean, full-
-  // resolution render, then restore the on-screen scale afterward either way.
-  const prevOuterWidth = outer.style.width, prevOuterHeight = outer.style.height, prevOuterAspect = outer.style.aspectRatio;
-  const prevTransform = inner.style.transform;
 
   // A hard ceiling on the whole operation, independent of where it's stuck --
-  // this is what actually guarantees the button can never again be left
-  // showing "Generating..." forever, regardless of which specific step (a
-  // hung CDN connection, a slow canvas render, anything else) is the cause
-  // on a given device or network.
+  // this is what guarantees the button can never again be left showing
+  // "Generating..." forever, regardless of which specific step (a hung CDN
+  // connection, a slow canvas render, anything else) is the cause on a
+  // given device or network.
   const withTimeout = (promise, ms)=>Promise.race([
     promise,
-    new Promise((_, reject)=>setTimeout(()=>reject(new Error("Timed out")), ms)),
+    new Promise((_, reject)=>setTimeout(()=>reject(new Error("Timed out after "+(ms/1000)+"s")), ms)),
   ]);
+
+  // Captures a full-size, off-screen clone rather than resizing the actual
+  // on-screen certificate -- resizing the live element visibly expanded the
+  // page while "Generating..." was showing, which was jarring on its own,
+  // and capturing a detached clone is also just a more reliable pattern for
+  // html2canvas than mutating and re-measuring a currently-displayed,
+  // currently-transformed element in place.
+  const clone = liveOuter.cloneNode(true);
+  clone.style.position = "fixed";
+  clone.style.left = "-9999px";
+  clone.style.top = "0";
+  clone.style.width = designWidth + "px";
+  clone.style.height = designHeight + "px";
+  clone.style.aspectRatio = "auto";
+  clone.style.margin = "0";
+  clone.style.maxWidth = "none";
+  const cloneInner = clone.querySelector(".certificate-inner, .certificate-inner-portrait");
+  if(cloneInner) cloneInner.style.transform = "none";
+  document.body.appendChild(clone);
 
   try{
     await withTimeout((async()=>{
-      await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
-      outer.style.aspectRatio = "auto";
-      outer.style.width = designWidth + "px";
-      outer.style.height = designHeight + "px";
-      inner.style.transform = "none";
-      const target = outer;
+      await loadScriptWithFallback([
+        "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
+        "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js",
+      ]);
       // html2canvas snapshots whatever is in the DOM the instant it's called --
       // if a larger image (the background watermark) hasn't actually finished
       // loading yet, it captures a blank gap where that image belongs rather
       // than waiting or erroring. Explicitly waiting for every image in the
       // certificate to finish first is what a real download (uncached, real
       // network) needs that a quick on-screen preview usually doesn't expose.
-      const images = Array.from(target.querySelectorAll("img"));
+      const images = Array.from(clone.querySelectorAll("img"));
       await Promise.all(images.map(img=>{
         if(img.complete && img.naturalWidth > 0) return Promise.resolve();
         return new Promise(resolve=>{
@@ -4669,7 +4697,7 @@ async function downloadCertificatePDF(dog, overlay){
         });
       }));
       const renderScale = 2;
-      const canvas = await window.html2canvas(target, { scale:renderScale, useCORS:true, backgroundColor:"#ffffff" });
+      const canvas = await window.html2canvas(clone, { scale:renderScale, useCORS:true, backgroundColor:"#ffffff" });
       const safeName = (dog.name||"dog").replace(/[^a-z0-9]+/gi,"-").toLowerCase();
 
       if(isPortrait){
@@ -4686,7 +4714,10 @@ async function downloadCertificatePDF(dog, overlay){
         a.remove();
         URL.revokeObjectURL(url);
       }else{
-        await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+        await loadScriptWithFallback([
+          "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
+          "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js",
+        ]);
         const imgData = canvas.toDataURL("image/jpeg", 0.95);
         const { jsPDF } = window.jspdf;
         // jsPDF's "px" unit assumes 96 DPI (1px = 1/96 inch) -- the canvas
@@ -4703,17 +4734,17 @@ async function downloadCertificatePDF(dog, overlay){
         pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
         pdf.save(`sidekick-certificate-${safeName}.pdf`);
       }
-    })(), 20000);
+    })(), 30000);
   }catch(e){
-    sk.showToast(isPortrait
-      ? "Couldn't generate the image directly — try a screenshot instead."
-      : "Couldn't generate the PDF directly — opening print instead.");
+    // Surfacing the actual error (not just a generic message) is deliberate
+    // here -- this exact feature has now failed in more than one way across
+    // several fixes, so the specific message is what turns the next report
+    // into an actual diagnosis instead of another guess.
+    console.error("Certificate download failed:", e);
+    sk.showToast(`Download failed: ${e && e.message ? e.message : "unknown error"}`);
     if(!isPortrait) window.print();
   }finally{
-    outer.style.width = prevOuterWidth;
-    outer.style.height = prevOuterHeight;
-    outer.style.aspectRatio = prevOuterAspect;
-    inner.style.transform = prevTransform;
+    clone.remove();
     btn.disabled = false;
     btn.textContent = originalLabel;
   }
