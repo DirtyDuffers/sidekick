@@ -3690,9 +3690,13 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "8.2.0";
+const APP_VERSION = "8.2.1";
 
 const CHANGELOG = [
+  { version: "8.2.1", notes: [
+    "Fixed the certificate background missing specifically from downloaded PDFs (confirmed from a real device — thanks for sending the actual file). Root cause: html2canvas snapshots the DOM the instant it's called, and on a real, uncached network load the larger background image sometimes hadn't finished loading yet, leaving a blank gap where it belongs. Now explicitly waits for every image in the certificate to finish loading before capturing",
+    "Also fixed the downloaded PDF always being saved as landscape even when downloading the portrait certificate, and simplified a redundant CSS transform on the background image that was one more unnecessary risk factor for canvas-capture compatibility",
+  ]},
   { version: "8.2.0", notes: [
     "New: Portrait certificates — a phone-friendly alternative to the landscape print version, toggle between them right from the certificate view with the same Print and Download PDF options working for whichever is showing",
     "The Certificates screen now opens with a real photo header",
@@ -4574,10 +4578,25 @@ async function downloadCertificatePDF(dog, overlay){
     await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
     await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
     const target = overlay.querySelector(".certificate-page, .certificate-page-portrait");
+    // html2canvas snapshots whatever is in the DOM the instant it's called --
+    // if a larger image (the background watermark) hasn't actually finished
+    // loading yet, it captures a blank gap where that image belongs rather
+    // than waiting or erroring. Explicitly waiting for every image in the
+    // certificate to finish first is what a real download (uncached, real
+    // network) needs that a quick on-screen preview usually doesn't expose.
+    const images = Array.from(target.querySelectorAll("img"));
+    await Promise.all(images.map(img=>{
+      if(img.complete && img.naturalWidth > 0) return Promise.resolve();
+      return new Promise(resolve=>{
+        img.addEventListener("load", resolve, {once:true});
+        img.addEventListener("error", resolve, {once:true}); // don't let one broken image block the rest
+      });
+    }));
     const canvas = await window.html2canvas(target, { scale:2, useCORS:true, backgroundColor:"#ffffff" });
     const imgData = canvas.toDataURL("image/jpeg", 0.95);
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation:"landscape", unit:"px", format:[canvas.width, canvas.height] });
+    const orientation = canvas.width >= canvas.height ? "landscape" : "portrait";
+    const pdf = new jsPDF({ orientation, unit:"px", format:[canvas.width, canvas.height] });
     pdf.addImage(imgData, "JPEG", 0, 0, canvas.width, canvas.height);
     const safeName = (dog.name||"dog").replace(/[^a-z0-9]+/gi,"-").toLowerCase();
     pdf.save(`sidekick-certificate-${safeName}.pdf`);
