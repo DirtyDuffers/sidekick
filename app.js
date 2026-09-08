@@ -3690,9 +3690,16 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "8.2.1";
+const APP_VERSION = "8.3.0";
 
 const CHANGELOG = [
+  { version: "8.3.0", notes: [
+    "Fixed the real root cause of the cut-off PDF downloads: html2canvas renders at 2x resolution for print sharpness, but that doubled pixel size was being used directly as the PDF page size too — jsPDF interprets \"px\" at 96 DPI, so the page ended up twice the intended size in each direction, and most PDF viewers only show the top-left portion of an oversized page at their default zoom. The page size is now correctly calculated from the certificate's real dimensions, while the embedded image stays full resolution",
+    "Fixed the landscape certificate rendering as a tall, portrait-like shape on phones instead of a genuine landscape shape — it never had a fixed aspect ratio on screen, only when printing. Rebuilt both certificate formats to use CSS container query units throughout, so every size and spacing on the certificate scales together correctly and keeps its real shape at any width — a phone, a tablet, a full-width desktop modal, or a PDF export",
+    "Fixed a real overflow bug caught while verifying the fix above: the gold medal still had a fixed pixel size that never scaled down with the rest of the certificate, and at small sizes it was disproportionately large enough to push the footer text out of frame, silently clipped by the certificate's own rounded border. The medal now scales with everything else",
+    "The portrait certificate is now built from the exact same elements as landscape — background watermark, logo, holo mark, matching title colour, and the same image-first-then-cursive-fallback signature treatment, not a simplified stand-in",
+    "Redesigned the certificate toolbar into two clear rows (Back + format toggle, then Print + Download PDF) with properly-sized tap targets, rather than everything competing for space in one cramped row",
+  ]},
   { version: "8.2.1", notes: [
     "Fixed the certificate background missing specifically from downloaded PDFs (confirmed from a real device — thanks for sending the actual file). Root cause: html2canvas snapshots the DOM the instant it's called, and on a real, uncached network load the larger background image sometimes hadn't finished loading yet, leaving a blank gap where it belongs. Now explicitly waits for every image in the certificate to finish loading before capturing",
     "Also fixed the downloaded PDF always being saved as landscape even when downloading the portrait certificate, and simplified a redundant CSS transform on the background image that was one more unnecessary risk factor for canvas-capture compatibility",
@@ -4476,7 +4483,7 @@ function openCertificateView(dog, cert, format){
         <img src="images/certificate-background.jpg" alt="" class="certificate-bg-watermark">
         <img src="images/logo-lockup-light.png" alt="Sidekick" class="certificate-logo">
         <img src="images/holo-icon.png" alt="" class="certificate-holo">
-        <img src="images/certificate-medal.png" alt="" style="width:88px; height:88px; object-fit:contain; position:relative;">
+        <img src="images/certificate-medal.png" alt="" class="certificate-medal-img">
         <div class="certificate-title" style="position:relative;">Certificate of Achievement</div>
         <div class="certificate-sub" style="position:relative;">${subtitle}</div>
         <div class="certificate-awardedto" style="position:relative;">Awarded to</div>
@@ -4493,13 +4500,16 @@ function openCertificateView(dog, cert, format){
     </div>
   `;
 
-  // Phone-friendly alternative -- same content and brand elements, laid out
+  // Phone-friendly alternative -- same content and brand elements as the
+  // landscape version (logo, medal, holo mark, background watermark, the
+  // same image-first-then-cursive-fallback signature treatment), laid out
   // tall for a screen or a phone-shaped print rather than a landscape page.
   const portraitHTML = `
     <div class="certificate-page-portrait">
       <div class="certificate-inner-portrait">
         <img src="images/certificate-background.jpg" alt="" class="certificate-bg-watermark">
         <img src="images/logo-lockup-light.png" alt="Sidekick" class="certificate-portrait-logo">
+        <img src="images/holo-icon.png" alt="" class="certificate-portrait-holo">
         <img src="images/certificate-medal.png" alt="" class="certificate-portrait-medal">
         <div class="certificate-portrait-title">Certificate of<br>Achievement</div>
         <div class="certificate-portrait-sub">${subtitle}</div>
@@ -4509,12 +4519,14 @@ function openCertificateView(dog, cert, format){
         <div class="certificate-portrait-rule"></div>
         <div class="certificate-portrait-body">${bodyText}</div>
         <div class="certificate-portrait-signoff">
-          <div class="certificate-portrait-signoff-label">Awarded by</div>
-          <div class="certificate-portrait-signoff-name">Duffers</div>
-          <div class="certificate-portrait-footer">
-            <div class="date">${generatedDate}</div>
-            <div>Sidekick — Reward-based dog training</div>
-          </div>
+          <img src="images/certificate-signature.png" alt="Duffers" class="certificate-portrait-sig-img"
+               onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="certificate-portrait-sig-text" style="display:none;">Duffers</div>
+          <div class="certificate-portrait-sig-line">Awarded by</div>
+        </div>
+        <div class="certificate-portrait-footer">
+          <div class="date">${generatedDate}</div>
+          <div>Sidekick — Reward-based dog training</div>
         </div>
       </div>
     </div>
@@ -4525,15 +4537,17 @@ function openCertificateView(dog, cert, format){
   overlay.className = "print-overlay";
   overlay.innerHTML = `
     <div class="print-toolbar no-print">
-      <button class="btn btn-ghost" id="certClose">← Back</button>
-      <div class="chip-group" id="certFormatToggle" style="margin-bottom:0;">
-        <button type="button" class="chip${format==="landscape"?" selected":""}" data-format="landscape">🖨️ Landscape</button>
-        <button type="button" class="chip${format==="portrait"?" selected":""}" data-format="portrait">📱 Portrait</button>
+      <div class="print-toolbar-row">
+        <button class="btn btn-ghost" id="certClose">← Back</button>
+        <div class="chip-group" id="certFormatToggle" style="margin-bottom:0; flex:2;">
+          <button type="button" class="chip${format==="landscape"?" selected":""}" data-format="landscape">🖨️ Landscape</button>
+          <button type="button" class="chip${format==="portrait"?" selected":""}" data-format="portrait">📱 Portrait</button>
+        </div>
       </div>
-    </div>
-    <div class="print-toolbar no-print" style="border-top:none;">
-      <button class="btn btn-primary btn-block" id="certGo">🖨️ Print</button>
-      <button class="btn btn-secondary btn-block" id="certDownload">⬇️ Download PDF</button>
+      <div class="print-toolbar-row">
+        <button class="btn btn-primary" id="certGo">🖨️ Print</button>
+        <button class="btn btn-secondary" id="certDownload">⬇️ Download PDF</button>
+      </div>
     </div>
     ${format==="portrait" ? portraitHTML : landscapeHTML}
   `;
@@ -4592,12 +4606,24 @@ async function downloadCertificatePDF(dog, overlay){
         img.addEventListener("error", resolve, {once:true}); // don't let one broken image block the rest
       });
     }));
-    const canvas = await window.html2canvas(target, { scale:2, useCORS:true, backgroundColor:"#ffffff" });
+    const renderScale = 2; // matches html2canvas's scale option below
+    const canvas = await window.html2canvas(target, { scale:renderScale, useCORS:true, backgroundColor:"#ffffff" });
     const imgData = canvas.toDataURL("image/jpeg", 0.95);
     const { jsPDF } = window.jspdf;
-    const orientation = canvas.width >= canvas.height ? "landscape" : "portrait";
-    const pdf = new jsPDF({ orientation, unit:"px", format:[canvas.width, canvas.height] });
-    pdf.addImage(imgData, "JPEG", 0, 0, canvas.width, canvas.height);
+    // jsPDF's "px" unit assumes 96 DPI (1px = 1/96 inch) -- the canvas itself
+    // is rendered at 2x that for print sharpness, so using its raw pixel
+    // dimensions as the PAGE size would make the page twice the intended
+    // size in each direction. That's exactly what was cutting downloads off:
+    // most PDF viewers open an oversized page at their default zoom rather
+    // than fitting it to the window, so only the top-left quarter was ever
+    // visible without the viewer's own zoom-to-fit. Dividing back out gives
+    // a page sized to the certificate's real dimensions, while the image
+    // embedded in it is still the full 2x-resolution capture for a sharp print.
+    const pageWidth = canvas.width / renderScale;
+    const pageHeight = canvas.height / renderScale;
+    const orientation = pageWidth >= pageHeight ? "landscape" : "portrait";
+    const pdf = new jsPDF({ orientation, unit:"px", format:[pageWidth, pageHeight] });
+    pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
     const safeName = (dog.name||"dog").replace(/[^a-z0-9]+/gi,"-").toLowerCase();
     pdf.save(`sidekick-certificate-${safeName}.pdf`);
   }catch(e){
