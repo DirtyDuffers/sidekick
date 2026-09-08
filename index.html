@@ -277,6 +277,10 @@ textarea{resize:vertical; min-height:70px;}
 .hairline-top{border-top:1px solid var(--line);}
 .stat-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px;}
 .stat-box{background:var(--canvas-raised); border:1px solid var(--line); border-radius:var(--radius-m); box-shadow:var(--shadow-card); padding:14px 10px; text-align:center;}
+.heatmap-grid{display:grid; grid-auto-flow:column; grid-template-rows:repeat(7, 1fr); gap:3px;}
+.heatmap-cell{width:100%; aspect-ratio:1; border-radius:2px; background:var(--line);}
+.heatmap-cell.trained{background:var(--forest);}
+.heatmap-cell.future{background:transparent;}
 .stat-box .num{font-family:var(--font-display); font-size:22px; font-weight:700; color:var(--forest);}
 .stat-box .lbl{font-size:11px; color:var(--ink-soft); margin-top:2px;}
 
@@ -378,7 +382,7 @@ textarea{resize:vertical; min-height:70px;}
 }
 
 /* ---------- Printable training log ---------- */
-#printLogOverlay, #trainingReportOverlay{
+.print-overlay{
   position:fixed; inset:0; z-index:500; background:var(--canvas);
   overflow-y:auto;
 }
@@ -406,7 +410,7 @@ textarea{resize:vertical; min-height:70px;}
 @media print{
   #app, .toast, .modal-overlay{ display:none !important; }
   .no-print{ display:none !important; }
-  #printLogOverlay, #trainingReportOverlay{ position:static; overflow:visible; background:#fff; }
+  .print-overlay{ position:static; overflow:visible; background:#fff; }
   .print-page{ color:#000; max-width:none; }
   .print-page h2{ break-after:avoid; }
   .print-table tr{ break-inside:avoid; }
@@ -456,6 +460,14 @@ textarea{resize:vertical; min-height:70px;}
     <div class="modal-sheet" id="modalSheet" role="dialog" aria-modal="true" tabindex="-1"></div>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <!-- Hidden, near-silent looping audio element. Some iOS Safari versions
+       have been reported to only apply the ambient (mute-switch-respecting)
+       audio session category when NO audio/video is actively playing on the
+       page; keeping this playing can nudge the whole page's audio -- including
+       Web Audio API sounds like the clicker -- into a category that bypasses
+       the mute switch. This is an unofficial, undocumented behaviour, not a
+       guaranteed API, and only runs when the person explicitly opts in. -->
+  <audio id="silentModeUnlockAudio" loop playsinline style="display:none;" src="data:audio/wav;base64,UklGRoQJAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YWAJAACAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgICAgICAgYGBgYGBgoGBgYGBgYCAgICAgIB/f39/f39+f39/f39/gICAgICAgIGBgYGBgYKBgYGBgYGAgICAgICAf39/f39/fn9/f39/f4CAgICAgICBgYGBgYGCgYGBgYGBgICAgICAgH9/f39/f35/f39/f3+AgIA="></audio>
 </div>
 
 <script src="app.js"></script>

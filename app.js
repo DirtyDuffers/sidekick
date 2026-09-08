@@ -39,6 +39,7 @@ const FEEDBACK_DISPLAY = {
 const AVATAR_COLORS = ["#2F5233","#3E6E82","#C08A2B","#6B4E9A","#B23A2E","#4E7A8C","#8A6D3A"];
 const DOG_EMOJI = ["🐕","🐶","🐩","🦮","🐕‍🦺"];
 const AGE_STAGES = ["Puppy","Adolescent","Adult","Senior"];
+const GENDERS = ["Male","Female","Unknown"];
 
 /* ---------------- State ---------------- */
 let KB = null;          // raw knowledge base
@@ -86,6 +87,27 @@ function setVoiceEnabled(on){
   if(!DB.settings) DB.settings = {};
   DB.settings.voiceGuidance = on;
   saveDB();
+}
+function isSilentModeBypassEnabled(){
+  return !!(DB.settings && DB.settings.silentModeBypass);
+}
+// This is a best-effort, opt-in workaround for an undocumented iOS Safari
+// behaviour, not a guaranteed fix -- see the comment on the audio element
+// itself in index.html for the full explanation. Starting/stopping this
+// element must happen inside a real user-gesture handler (a click), the
+// same constraint the Web Audio API itself has.
+function setSilentModeBypassEnabled(on){
+  if(!DB.settings) DB.settings = {};
+  DB.settings.silentModeBypass = on;
+  saveDB();
+  const el = document.getElementById("silentModeUnlockAudio");
+  if(!el) return;
+  if(on){
+    el.volume = 1; // the WAV content itself is already near-silent
+    el.play().catch(()=>{}); // ignored: will retry on the next real click if this one wasn't a gesture
+  }else{
+    el.pause();
+  }
 }
 function getQuietHours(){
   const s = DB.settings || {};
@@ -141,6 +163,10 @@ let sharedAudioCtx = null;
 // pitch a real box clicker has), both with a near-instant decay envelope.
 function playClickSound(){
   try{
+    if(isSilentModeBypassEnabled()){
+      const unlockEl = document.getElementById("silentModeUnlockAudio");
+      if(unlockEl && unlockEl.paused) unlockEl.play().catch(()=>{});
+    }
     if(!sharedAudioCtx){
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if(!Ctx) return;
@@ -439,13 +465,14 @@ window.__sk = {
   get activeSession(){return activeSession;}, setActiveSession(v){activeSession=v;},
   get activeProgramme(){return activeProgramme;}, setActiveProgramme(v){activeProgramme=v;},
   CATEGORY_COLOR_VARS, CATEGORY_ICON, SKILL_STATES, STATE_COLOR, ADAPTIVE_FEEDBACK, FEEDBACK_DISPLAY,
-  AVATAR_COLORS, DOG_EMOJI, AGE_STAGES,
+  AVATAR_COLORS, DOG_EMOJI, AGE_STAGES, GENDERS,
   splitPipe, splitSemi, getCategoryVar, getCategoryIcon,
   getCurrentDog, ensureCurrentDog, dogSkillState, setDogSkillState, dogLessonProgress,
   isFavourite, toggleFavourite, getLessonNote, setLessonNote,
   uid, esc, fmtDate, daysAgo, showToast, openModal, closeModal, setTheme, logoLockupHTML,
   isVoiceEnabled, setVoiceEnabled, speak, playClickSound,
   getQuietHours, setQuietHours,
+  isSilentModeBypassEnabled, setSilentModeBypassEnabled,
   goScreen, render, SCREEN_RENDERERS, saveDB, loadKnowledgeBase, loadDB, setTabbarVisible
 };
 
@@ -592,6 +619,11 @@ function renderOnboarding(container){
           ${sk.AGE_STAGES.map((s,i)=>`<button type="button" class="chip${i===1?' selected':''}" data-val="${s}">${s}</button>`).join("")}
         </div>
 
+        <label id="ob_genderLabel">Gender <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+        <div class="chip-group" id="ob_gender" role="group" aria-labelledby="ob_genderLabel">
+          ${sk.GENDERS.map((g,i)=>`<button type="button" class="chip${i===2?' selected':''}" data-val="${g}">${g}</button>`).join("")}
+        </div>
+
         <label id="ob_avatarLabel">Pick an avatar <span style="font-weight:400;color:var(--ink-soft)">(used if no photo)</span></label>
         <div class="chip-group" id="ob_emoji" role="group" aria-labelledby="ob_avatarLabel">
           ${sk.DOG_EMOJI.map((e,i)=>`<button type="button" class="chip${i===0?' selected':''}" data-val="${e}" style="font-size:18px;" aria-label="Avatar option ${i+1}">${e}</button>`).join("")}
@@ -605,6 +637,7 @@ function renderOnboarding(container){
     </div>
   `;
   let stage = sk.AGE_STAGES[1];
+  let gender = sk.GENDERS[2];
   let emoji = sk.DOG_EMOJI[0];
   let color = sk.AVATAR_COLORS[0];
   let photo = null;
@@ -633,6 +666,11 @@ function renderOnboarding(container){
     container.querySelectorAll("#ob_stage .chip").forEach(c=>c.classList.remove("selected"));
     b.classList.add("selected"); stage = b.dataset.val;
   });
+  container.querySelector("#ob_gender").addEventListener("click", e=>{
+    const b = e.target.closest(".chip"); if(!b) return;
+    container.querySelectorAll("#ob_gender .chip").forEach(c=>c.classList.remove("selected"));
+    b.classList.add("selected"); gender = b.dataset.val;
+  });
   container.querySelector("#ob_emoji").addEventListener("click", e=>{
     const b = e.target.closest(".chip"); if(!b) return;
     container.querySelectorAll("#ob_emoji .chip").forEach(c=>c.classList.remove("selected"));
@@ -651,7 +689,7 @@ function renderOnboarding(container){
     if(!name) return;
     const dog = {
       id: sk.uid(), name, breed: container.querySelector("#ob_breed").value.trim(),
-      ageStage: stage, emoji, color, photo, createdAt: new Date().toISOString()
+      ageStage: stage, gender, emoji, color, photo, createdAt: new Date().toISOString()
     };
     sk.DB.dogs.push(dog);
     sk.DB.activeDogId = dog.id;
@@ -665,7 +703,7 @@ function renderOnboarding(container){
 function renderDogForm(existing){
   const isNew = !existing;
   const dog = existing || {name:"",breed:"",ageStage:sk.AGE_STAGES[1],emoji:sk.DOG_EMOJI[0],color:sk.AVATAR_COLORS[0]};
-  let stage = dog.ageStage, emoji = dog.emoji, color = dog.color, photo = dog.photo || null;
+  let stage = dog.ageStage, gender = dog.gender || sk.GENDERS[2], emoji = dog.emoji, color = dog.color, photo = dog.photo || null;
   const html = `
     <h3>${isNew?"Add a dog":"Edit "+sk.esc(dog.name)}</h3>
     <form id="dogForm">
@@ -685,6 +723,10 @@ function renderDogForm(existing){
       <label id="df_stageLabel">Life stage</label>
       <div class="chip-group" id="df_stage" role="group" aria-labelledby="df_stageLabel">
         ${sk.AGE_STAGES.map(s=>`<button type="button" class="chip${s===stage?' selected':''}" data-val="${s}">${s}</button>`).join("")}
+      </div>
+      <label id="df_genderLabel">Gender <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+      <div class="chip-group" id="df_gender" role="group" aria-labelledby="df_genderLabel">
+        ${sk.GENDERS.map(g=>`<button type="button" class="chip${g===gender?' selected':''}" data-val="${g}">${g}</button>`).join("")}
       </div>
       <label id="df_avatarLabel">${photo?"Backup avatar":"Avatar"} <span style="font-weight:400;color:var(--ink-soft)">${photo?"(shown if the photo can't load)":""}</span></label>
       <div class="chip-group" id="df_emoji" role="group" aria-labelledby="df_avatarLabel">
@@ -740,6 +782,11 @@ function renderDogForm(existing){
     root.querySelectorAll("#df_stage .chip").forEach(c=>c.classList.remove("selected"));
     b.classList.add("selected"); stage=b.dataset.val;
   });
+  root.querySelector("#df_gender").addEventListener("click", e=>{
+    const b=e.target.closest(".chip"); if(!b) return;
+    root.querySelectorAll("#df_gender .chip").forEach(c=>c.classList.remove("selected"));
+    b.classList.add("selected"); gender=b.dataset.val;
+  });
   root.querySelector("#df_emoji").addEventListener("click", e=>{
     const b=e.target.closest(".chip"); if(!b) return;
     root.querySelectorAll("#df_emoji .chip").forEach(c=>c.classList.remove("selected"));
@@ -758,11 +805,11 @@ function renderDogForm(existing){
     if(!name) return;
     const breed = root.querySelector("#df_breed").value.trim();
     if(isNew){
-      const nd = {id:sk.uid(), name, breed, ageStage:stage, emoji, color, photo, createdAt:new Date().toISOString()};
+      const nd = {id:sk.uid(), name, breed, ageStage:stage, gender, emoji, color, photo, createdAt:new Date().toISOString()};
       sk.DB.dogs.push(nd);
       sk.setCurrentDogId(nd.id);
     }else{
-      Object.assign(dog, {name, breed, ageStage:stage, emoji, color, photo});
+      Object.assign(dog, {name, breed, ageStage:stage, gender, emoji, color, photo});
       sk.saveDB();
     }
     sk.closeModal();
@@ -983,6 +1030,14 @@ function recentSessions(dogId, n){
   return sk.DB.sessions.filter(s=>s.dogId===dogId).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,n||3);
 }
 
+// Returns the praise word matching the dog's gender, falling back to a
+// neutral term for "Unknown" or if the field is missing on older profiles.
+function praiseWordFor(dog){
+  if(dog && dog.gender === "Male") return "Good boy";
+  if(dog && dog.gender === "Female") return "Good girl";
+  return "Good dog";
+}
+
 function trainingStreak(dogId){
   const dates = new Set(sk.DB.sessions.filter(s=>s.dogId===dogId).map(s=>s.date.slice(0,10)));
   let streak = 0;
@@ -1122,6 +1177,52 @@ function openClickerModal(){
   });
 }
 
+// Builds a GitHub-style contribution grid for the last ~10 weeks -- 7 rows
+// (days) x N columns (weeks), each cell coloured by whether at least one
+// session happened that day. Cells are emitted in chronological (column-major)
+// order and CSS handles arranging them into the visual 7-row grid.
+function trainingHeatmapHTML(dogId, weeks){
+  weeks = weeks || 10;
+  const sessionDates = new Set(
+    sk.DB.sessions.filter(s=>s.dogId===dogId).map(s=>s.date.slice(0,10))
+  );
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const endOfGrid = new Date(today);
+  endOfGrid.setDate(today.getDate() + (6 - today.getDay())); // roll forward to this week's Saturday
+  const totalDays = weeks * 7;
+  const start = new Date(endOfGrid);
+  start.setDate(endOfGrid.getDate() - totalDays + 1);
+
+  let cells = "";
+  const cursor = new Date(start);
+  const monthLabels = [];
+  let lastMonth = null;
+  for(let col=0; col<weeks; col++){
+    const colDate = new Date(start);
+    colDate.setDate(start.getDate() + col*7);
+    const monthName = colDate.toLocaleDateString(undefined,{month:"short"});
+    if(monthName !== lastMonth){ monthLabels.push({col, label:monthName}); lastMonth = monthName; }
+  }
+  for(let i=0;i<totalDays;i++){
+    const key = cursor.toISOString().slice(0,10);
+    const isFuture = cursor > today;
+    const trained = sessionDates.has(key);
+    const title = cursor.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}) + (trained ? " — trained" : "");
+    cells += `<div class="heatmap-cell${trained?' trained':''}${isFuture?' future':''}" title="${sk.esc(title)}"></div>`;
+    cursor.setDate(cursor.getDate()+1);
+  }
+  return `
+    <div style="position:relative; height:14px; margin-bottom:2px; font-size:10px; color:var(--ink-soft);">
+      ${monthLabels.map(m=>`<span style="position:absolute; left:${(m.col/weeks*100).toFixed(1)}%;">${m.label}</span>`).join("")}
+    </div>
+    <div class="heatmap-grid" style="grid-template-columns:repeat(${weeks}, 1fr);">${cells}</div>
+    <div style="display:flex; align-items:center; justify-content:flex-end; gap:5px; margin-top:6px; font-size:10.5px; color:var(--ink-soft);">
+      <span>Less</span><span class="heatmap-cell" style="display:inline-block;"></span><span class="heatmap-cell trained" style="display:inline-block;"></span><span>Trained</span>
+    </div>
+  `;
+}
+
 function openTrainingJourney(dog){
   const counts = skillSummary(dog.id);
   const skillTotal = sk.KB.collections.skills.length;
@@ -1155,6 +1256,11 @@ function openTrainingJourney(dog){
       <div class="stat-box"><div class="num">${lessonsCompleted}</div><div class="lbl">Lessons trained</div></div>
       <div class="stat-box"><div class="num">🔥 ${streak}</div><div class="lbl">Current streak</div></div>
       <div class="stat-box"><div class="num">${longest}</div><div class="lbl">Longest streak</div></div>
+    </div>
+
+    <div class="section-label" role="heading" aria-level="2">Training days</div>
+    <div class="card">
+      ${trainingHeatmapHTML(dog.id)}
     </div>
 
     <div class="section-label" role="heading" aria-level="2" style="margin-top:0;">Skills by stage</div>
@@ -1194,6 +1300,7 @@ window.__sk.longestStreakEver = longestStreakEver;
 window.__sk.totalLessonsCompleted = totalLessonsCompleted;
 window.__sk.skillSummary = skillSummary;
 window.__sk.trainingStreak = trainingStreak;
+window.__sk.praiseWordFor = praiseWordFor;
 window.__sk.recentSessions = recentSessions;
 })();
 
@@ -1769,9 +1876,11 @@ function openLessonDetail(lessonId){
 
     ${sourcesLine(l.source_ids) ? `<p style="font-size:11.5px; color:var(--ink-soft); margin-top:18px;">Sources:</p>${sourcesPillsHTML(l.source_ids)}` : ""}
     ${l.evidence_level ? `<p style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">${sk.esc(l.evidence_level)}</p>` : ""}
+    <button class="btn btn-ghost btn-block" id="printLessonBtn" style="margin-top:18px;">🖨️ Print this lesson</button>
   </div>`;
 
   document.getElementById("backBtn").addEventListener("click", ()=>sk.goScreen(sk.currentScreen));
+  document.getElementById("printLessonBtn").addEventListener("click", ()=>sk.openLessonPrintView(l));
   document.getElementById("favBtn").addEventListener("click", ()=>{
     const nowFav = sk.toggleFavourite(lessonId);
     const btn = document.getElementById("favBtn");
@@ -1805,6 +1914,7 @@ function startSession(lessonId){
 function renderSessionScreen(){
   const session = sk.activeSession;
   const l = sk.IDX.lessonsById.get(session.lessonId);
+  const dog = sk.getCurrentDog();
   const steps = sk.splitPipe(l.steps);
   sk.setTopbar(l.title, "Training session", `<button class="icon-btn" id="endBtn" aria-label="End session">✕</button>`);
   const container = document.getElementById("screens");
@@ -1873,7 +1983,7 @@ function renderSessionScreen(){
       ? `successful${total>=3?" · 🔥 "+pct+"% success rate":""}`
       : "successful, 0 so far";
   }
-  container.querySelector("#repSuccess").addEventListener("click", ()=>{ session.reps.push(true); paint(); sk.speak("Yes"); });
+  container.querySelector("#repSuccess").addEventListener("click", ()=>{ session.reps.push(true); paint(); sk.speak(sk.praiseWordFor(dog)); });
   container.querySelector("#repMiss").addEventListener("click", ()=>{ session.reps.push(false); paint(); sk.speak("Okay, next one"); });
   container.querySelector("#clickerBtn").addEventListener("click", sk.playClickSound);
   container.querySelector("#repeatStepsBtn").addEventListener("click", ()=>{ speakSteps(); if(sk.isVoiceEnabled()) highlightStepsInSequence(); });
@@ -2356,12 +2466,57 @@ function storageEstimateText(){
   }catch(e){ return ""; }
 }
 
+// A side-by-side comparison for households with more than one dog --
+// reuses the same per-dog calculations as the individual Training Journey
+// view, so the numbers here always agree with each dog's own page.
+function openCompareDogs(){
+  const dogs = sk.DB.dogs;
+  sk.openModal(`
+    <h3 style="text-align:center; margin-bottom:16px;">Compare dogs</h3>
+    ${dogs.map(d=>{
+      const pct = sk.overallProgressPercent(d.id);
+      const streak = sk.trainingStreak(d.id);
+      const lessons = sk.totalLessonsCompleted(d.id);
+      const counts = sk.skillSummary(d.id);
+      const reliableOrAbove = (counts["Reliable"]||0) + (counts["Generalising"]||0) + (counts["Life-ready"]||0);
+      return `
+        <div class="card">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+            ${sk.dogAvatarHTML(d)}
+            <div style="font-weight:700; font-size:15px;">${sk.esc(d.name)}</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <div style="flex:1; text-align:center; background:var(--canvas-raised); border-radius:10px; padding:8px 4px;">
+              <div style="font-size:17px; font-weight:700; font-family:var(--font-display); color:var(--forest);">${pct}%</div>
+              <div style="font-size:10px; color:var(--ink-soft);">progress</div>
+            </div>
+            <div style="flex:1; text-align:center; background:var(--canvas-raised); border-radius:10px; padding:8px 4px;">
+              <div style="font-size:17px; font-weight:700; font-family:var(--font-display);">🔥 ${streak}</div>
+              <div style="font-size:10px; color:var(--ink-soft);">streak</div>
+            </div>
+            <div style="flex:1; text-align:center; background:var(--canvas-raised); border-radius:10px; padding:8px 4px;">
+              <div style="font-size:17px; font-weight:700; font-family:var(--font-display);">${lessons}</div>
+              <div style="font-size:10px; color:var(--ink-soft);">lessons</div>
+            </div>
+            <div style="flex:1; text-align:center; background:var(--canvas-raised); border-radius:10px; padding:8px 4px;">
+              <div style="font-size:17px; font-weight:700; font-family:var(--font-display);">${reliableOrAbove}</div>
+              <div style="font-size:10px; color:var(--ink-soft);">reliable+</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("")}
+    <p style="font-size:11.5px; color:var(--ink-soft); text-align:center; margin-top:4px;">"Reliable+" counts skills at Reliable, Generalising, or Life-ready.</p>
+  `);
+}
+
 function renderMore(container){
   sk.setTopbar("Profile", "Dog, safety & data", "");
   const dog = sk.getCurrentDog();
   const currentTheme = (sk.DB.settings && sk.DB.settings.theme) || "auto";
   const voiceOn = sk.isVoiceEnabled();
   const quietHours = sk.getQuietHours();
+  const silentBypassOn = sk.isSilentModeBypassEnabled();
   container.innerHTML = `
     <div class="section-label" role="heading" aria-level="2">Dogs</div>
     <div class="row-list">
@@ -2372,6 +2527,7 @@ function renderMore(container){
           <span class="row-chev">›</span>
         </button>`).join("")}
       <button class="row" id="addDogRow"><div class="avatar" style="background:var(--line); color:var(--ink-soft);">+</div><div class="row-body"><div class="row-title">Add another dog</div></div></button>
+      ${sk.DB.dogs.length > 1 ? `<button class="row" id="compareDogsRow"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">Compare dogs</div><div class="row-meta">Progress side by side</div></div><span class="row-chev">›</span></button>` : ""}
     </div>
 
     <div class="section-label" role="heading" aria-level="2">Daily programmes</div>
@@ -2440,6 +2596,19 @@ function renderMore(container){
       </div>` : ""}
     </div>
 
+    <div class="section-label" role="heading" aria-level="2">Clicker</div>
+    <div class="card">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div style="flex:1;">
+          <div style="font-weight:600; font-size:14px;">Try to play even on silent mode</div>
+          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">Experimental. Uses an undocumented iOS behaviour that isn't guaranteed to work on every device, and Apple could change it at any time.</div>
+        </div>
+        <button type="button" id="silentBypassToggle" role="switch" aria-checked="${silentBypassOn}" aria-label="Try to play the clicker even on silent mode" style="flex:none; width:46px; height:27px; border-radius:14px; border:none; background:${silentBypassOn?'var(--forest)':'var(--line)'}; position:relative; cursor:pointer; padding:0;">
+          <span style="position:absolute; top:2px; left:${silentBypassOn?'21px':'2px'}; width:23px; height:23px; border-radius:50%; background:#fff; transition:left 0.15s;"></span>
+        </button>
+      </div>
+    </div>
+
     <div class="section-label" role="heading" aria-level="2">Content check</div>
     <div class="card">
       <p style="font-size:13px; color:var(--ink-soft); margin-bottom:10px;">Scans the training library for broken references, missing fields, and media issues — useful after adding new lesson content.</p>
@@ -2470,6 +2639,8 @@ function renderMore(container){
     sk.renderDogForm(d);
   }));
   container.querySelector("#addDogRow").addEventListener("click", ()=>sk.renderDogForm(null));
+  const compareBtn = container.querySelector("#compareDogsRow");
+  if(compareBtn) compareBtn.addEventListener("click", openCompareDogs);
   container.querySelectorAll("[data-programme]").forEach(r=>r.addEventListener("click", ()=>openProgrammeDetail(r.dataset.programme)));
   container.querySelector("#safetyRow").addEventListener("click", openSafetyReference);
   container.querySelector("#mythsRow").addEventListener("click", openMythsReference);
@@ -2506,6 +2677,10 @@ function renderMore(container){
   if(qEnd) qEnd.addEventListener("change", ()=>{
     const q = sk.getQuietHours();
     sk.setQuietHours(q.enabled, q.start, qEnd.value);
+  });
+  container.querySelector("#silentBypassToggle").addEventListener("click", ()=>{
+    sk.setSilentModeBypassEnabled(!sk.isSilentModeBypassEnabled());
+    renderMore(container);
   });
   container.querySelector("#integrityBtn").addEventListener("click", ()=>runIntegrityCheckUI(container));
   container.querySelector("#exportBtn").addEventListener("click", exportBackup);
@@ -2619,6 +2794,7 @@ function renderProgrammeBlock(){
   const prog = sk.activeProgramme;
   const pName = programmeDisplayName(prog);
   const l = prog.lessons[prog.index];
+  const dog = sk.getCurrentDog();
   const steps = sk.splitPipe(l.steps);
   const reps = [];
   sk.setTopbar(pName, "Block "+(prog.index+1)+" of "+prog.lessons.length, `<button class="icon-btn" id="endProgBtn" aria-label="End programme">✕</button>`);
@@ -2679,7 +2855,7 @@ function renderProgrammeBlock(){
     container.querySelector("#repCounter").textContent = reps.length;
     container.querySelector("#repBreakdown").textContent = succ+" successful";
   }
-  container.querySelector("#repSuccess").addEventListener("click", ()=>{ reps.push(true); paint(); sk.speak("Yes"); });
+  container.querySelector("#repSuccess").addEventListener("click", ()=>{ reps.push(true); paint(); sk.speak(sk.praiseWordFor(dog)); });
   container.querySelector("#repMiss").addEventListener("click", ()=>{ reps.push(false); paint(); sk.speak("Okay, next one"); });
   container.querySelector("#clickerBtn").addEventListener("click", sk.playClickSound);
   container.querySelector("#repeatStepsBtn").addEventListener("click", ()=>{ speakSteps(); if(sk.isVoiceEnabled()) highlightStepsInSequence(); });
@@ -3002,9 +3178,19 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "5.1.0";
+const APP_VERSION = "5.3.0";
 
 const CHANGELOG = [
+  { version: "5.3.0", notes: [
+    "New: Gender (Male / Female / Unknown) when adding or editing a dog — voice guidance now says \"Good boy\", \"Good girl\", or \"Good dog\" on a successful rep to match, defaulting sensibly to \"Good dog\" for existing profiles saved before this existed. \"Okay, next one\" on a miss is unchanged either way",
+    "New, experimental: a \"try to play even on silent mode\" toggle for the clicker (Profile → Clicker), off by default. This uses an undocumented iOS Safari behaviour — keeping a barely-audible looping sound actively playing can sometimes bump the whole page's audio out of the category that respects the mute switch. It's genuinely not guaranteed to work on every device, and Apple could change this at any time, so it's opt-in and labelled clearly as experimental rather than promised as a fix",
+  ]},
+  { version: "5.2.0", notes: [
+    "New: Print this lesson — a single-page, print-formatted version of any lesson's goal, setup, steps, success criteria, and common mistakes, for a paper backup when a phone isn't practical outdoors",
+    "New: a training-days heatmap on the Training Journey view — a GitHub-style contribution grid built from session history already being tracked",
+    "New: Compare dogs (Profile, shown only with more than one dog) — progress, streak, lessons trained, and reliable-or-above skills side by side, using the exact same calculations as each dog's individual journey view so the two can never disagree",
+    "Fixed a real bug caught in testing: the new lesson-print button initially threw \"openLessonPrintView is not defined\" — a cross-module scoping issue, the same category of bug that's come up a few times in this project. Also tidied up an unrelated overlay that was reusing another one's DOM id",
+  ]},
   { version: "5.1.0", notes: [
     "Fixed the clicker not making a sound: the audio context's resume() is asynchronous, and the click was being scheduled before it finished — a suspended AudioContext doesn't process anything scheduled against it. Now waits properly for resume to complete first",
     "New: Quiet hours (Profile → Voice guidance) — set a time window where voice guidance stays silent even if it's turned on, correctly handling overnight ranges that cross midnight",
@@ -3537,6 +3723,52 @@ function runIntegrityCheckUI(container){
 // A curated, one-page shareable snapshot -- distinct from the exhaustive
 // session-by-session Printable Log below. Reuses the same calculations as
 // the Training Journey modal so the numbers are always consistent between them.
+// A single lesson formatted for a paper backup -- useful outdoors where
+// checking a phone mid-session isn't practical. Reuses the same print
+// classes as the training report and full log for visual consistency.
+function openLessonPrintView(l){
+  const steps = sk.splitPipe(l.steps);
+  const mistakes = sk.splitPipe(l.common_mistakes);
+  const overlay = document.createElement("div");
+  overlay.id = "lessonPrintOverlay";
+  overlay.className = "print-overlay";
+  overlay.innerHTML = `
+    <div class="print-toolbar no-print">
+      <button class="btn btn-ghost" id="lessonPrintClose">← Back</button>
+      <button class="btn btn-primary" id="lessonPrintGo">🖨️ Print / Save as PDF</button>
+    </div>
+    <div class="print-page">
+      <h1>${sk.esc(l.title)}</h1>
+      <p class="print-sub">${sk.esc(l.category)} · ${sk.esc(l.difficulty||"")} · ${l.session_length_min?l.session_length_min+" min":""}</p>
+
+      <h2>Today's goal</h2>
+      <p>${sk.esc(l.objective)}</p>
+
+      ${l.setup ? `<h2>Setup</h2><p>${sk.esc(l.setup)}</p>` : ""}
+
+      <h2>Steps</h2>
+      <table class="print-table">
+        ${steps.map((s,i)=>`<tr><td style="width:26px; font-weight:700;">${i+1}</td><td>${sk.esc(s)}</td></tr>`).join("")}
+      </table>
+
+      <h2>Success looks like</h2>
+      <p>${sk.esc(l.success_criteria)}</p>
+
+      ${mistakes.length ? `<h2>Common mistakes</h2>
+      <table class="print-table">
+        ${mistakes.map(m=>`<tr><td>✗ ${sk.esc(m)}</td></tr>`).join("")}
+      </table>` : ""}
+
+      ${l.equipment ? `<h2>Equipment</h2><p>${sk.esc(l.equipment)}</p>` : ""}
+
+      <p class="print-footer">Printed from Sidekick — a reward-based dog training companion.</p>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById("lessonPrintClose").addEventListener("click", ()=>overlay.remove());
+  document.getElementById("lessonPrintGo").addEventListener("click", ()=>window.print());
+}
+
 function openTrainingReport(){
   const dog = sk.getCurrentDog();
   if(!dog){ sk.showToast("Add a dog first."); return; }
@@ -3563,6 +3795,7 @@ function openTrainingReport(){
 
   const overlay = document.createElement("div");
   overlay.id = "trainingReportOverlay";
+  overlay.className = "print-overlay";
   overlay.innerHTML = `
     <div class="print-toolbar no-print">
       <button class="btn btn-ghost" id="reportClose">← Back</button>
@@ -3623,6 +3856,7 @@ function openPrintableLog(){
 
   const overlay = document.createElement("div");
   overlay.id = "printLogOverlay";
+  overlay.className = "print-overlay";
   overlay.innerHTML = `
     <div class="print-toolbar no-print">
       <button class="btn btn-ghost" id="printLogClose">← Back</button>
@@ -3682,6 +3916,7 @@ function confirmReset(){
 }
 
 sk.SCREEN_RENDERERS.more = renderMore;
+window.__sk.openLessonPrintView = openLessonPrintView;
 })();
 
 /* ============================================================
