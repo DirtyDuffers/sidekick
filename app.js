@@ -93,10 +93,12 @@ function loadDB(){
       if(!parsed.lessonNotes) parsed.lessonNotes = {}; // added after initial release — default for existing saves
       if(!parsed.weightLogs) parsed.weightLogs = []; // added after initial release — default for existing saves
       if(!parsed.walks) parsed.walks = []; // added after initial release — default for existing saves
+      if(!parsed.totalClicks) parsed.totalClicks = 0; // added after initial release — default for existing saves
+      if(!parsed.hiddenAchievements) parsed.hiddenAchievements = []; // added after initial release — default for existing saves
       return parsed;
     }
   }catch(e){ console.error("Sidekick: failed to parse local data, starting fresh.", e); }
-  return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{}, favourites:[], lessonNotes:{}, weightLogs:[], walks:[] };
+  return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{}, favourites:[], lessonNotes:{}, weightLogs:[], walks:[], totalClicks:0, hiddenAchievements:[] };
 }
 function getWeightLogs(dogId){
   return DB.weightLogs.filter(w=>w.dogId===dogId).sort((a,b)=>new Date(a.date)-new Date(b.date));
@@ -118,6 +120,7 @@ function getWalks(dogId){
 function addWalk(dogId, date, durationSeconds, distanceKm, source){
   DB.walks.push({ id: uid(), dogId, date, durationSeconds: Math.round(durationSeconds), distanceKm: distanceKm!=null ? Number(distanceKm.toFixed(2)) : null, source: source||"manual" });
   saveDB();
+  window.__sk.checkHiddenAchievements(dogId);
 }
 function deleteWalk(id){
   DB.walks = DB.walks.filter(w=>w.id!==id);
@@ -261,6 +264,10 @@ let sharedAudioCtx = null;
 // pitch a real box clicker has), both with a near-instant decay envelope.
 function playClickSound(){
   try{
+    DB.totalClicks = (DB.totalClicks||0) + 1;
+    saveDB();
+    const dog = getCurrentDog();
+    if(dog) window.__sk.checkHiddenAchievements(dog.id);
     if(isSilentModeBypassEnabled()){
       const unlockEl = document.getElementById("silentModeUnlockAudio");
       if(unlockEl && unlockEl.paused) unlockEl.play().catch(()=>{});
@@ -492,7 +499,7 @@ document.addEventListener("keydown", (e)=>{
 
 /* ---------------- Router ---------------- */
 const SCREEN_RENDERERS = {}; // filled in by other sections: name -> function(container)
-const TAB_SCREENS = ["home","lessons","behaviours","skills","more","about","progress"];
+const TAB_SCREENS = ["home","lessons","behaviours","skills","profile","settings","about","progress"];
 // Baseline topbar content per screen, applied before the renderer runs.
 // This exists so a screen can never show another screen's leftover title —
 // a real bug: onboarding never called setTopbar, so reaching it via Reset
@@ -505,7 +512,8 @@ const SCREEN_TOPBAR_DEFAULTS = {
   lessons: ["Train", "Lessons, skills & programmes"],
   behaviours: ["Behaviour guide", "Find management & training routes"],
   skills: ["Skills", ""],
-  more: ["Profile", "Dog, safety & data"],
+  profile: ["Profile", "Your dog's details & achievements"],
+  settings: ["Settings", "App preferences & data"],
   about: ["About", "Sidekick"],
   progress: ["Progress", "Your training history"],
 };
@@ -587,6 +595,10 @@ async function boot(){
     const current = (DB.settings && DB.settings.theme) || "auto";
     const isDarkNow = current === "dark" || (current === "auto" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
     setTheme(isDarkNow ? "light" : "dark");
+  });
+  document.getElementById("topbarAboutBtn").addEventListener("click", ()=>{
+    if(window.__sk.currentScreen === "onboarding") return; // avoid wiping a half-filled form
+    goScreen("about");
   });
   if(window.matchMedia){
     // Keeps the quick-toggle icon honest if the OS theme changes while "Auto" is selected,
@@ -1153,6 +1165,51 @@ function trainingStreak(dogId){
   return streak;
 }
 
+function walkStreak(dogId){
+  const dates = new Set(sk.DB.walks.filter(w=>w.dogId===dogId).map(w=>w.date.slice(0,10)));
+  let streak = 0;
+  let d = new Date();
+  for(;;){
+    const key = d.toISOString().slice(0,10);
+    if(dates.has(key)){ streak++; d.setDate(d.getDate()-1); }
+    else if(streak===0 && key===new Date().toISOString().slice(0,10)){ d.setDate(d.getDate()-1); continue; }
+    else break;
+  }
+  return streak;
+}
+
+// Surprise achievements -- deliberately not shown anywhere until unlocked,
+// unlike the category certificates which show visible progress. These are
+// meant to be found, not chased.
+const HIDDEN_ACHIEVEMENTS = [
+  { id:"first-lesson", label:"First Steps", desc:"Completed your first lesson", emoji:"🐾", check:(dogId)=>totalLessonsCompleted(dogId) >= 1 },
+  { id:"streak-7", label:"Week Warrior", desc:"A 7-day training streak", emoji:"🔥", check:(dogId)=>trainingStreak(dogId) >= 7 },
+  { id:"streak-30", label:"Iron Will", desc:"A 30-day training streak", emoji:"🔥", check:(dogId)=>trainingStreak(dogId) >= 30 },
+  { id:"walkstreak-7", label:"Dedicated Walker", desc:"A 7-day walk streak", emoji:"🚶", check:(dogId)=>walkStreak(dogId) >= 7 },
+  { id:"clicks-100", label:"Clicker Novice", desc:"100 lifetime clicks", emoji:"👆", check:()=>sk.DB.totalClicks >= 100 },
+  { id:"clicks-1000", label:"Clicker Master", desc:"1000 lifetime clicks", emoji:"👆", check:()=>sk.DB.totalClicks >= 1000 },
+];
+// Runs after any action that could plausibly unlock one of these (a lesson
+// completing, a walk saving, a click sounding) -- cheap comparisons only,
+// so calling it often (even on every click) costs nothing noticeable.
+// Newly-unlocked ones get an immediate toast, since the whole point of a
+// hidden achievement is the moment of finding out, not checking a list.
+function checkHiddenAchievements(dogId){
+  const newlyUnlocked = [];
+  HIDDEN_ACHIEVEMENTS.forEach(a=>{
+    if(sk.DB.hiddenAchievements.includes(a.id)) return;
+    if(a.check(dogId)){
+      sk.DB.hiddenAchievements.push(a.id);
+      newlyUnlocked.push(a);
+    }
+  });
+  if(newlyUnlocked.length){
+    sk.saveDB();
+    newlyUnlocked.forEach(a=>sk.showToast(`🎉 Achievement unlocked: ${a.label}!`));
+  }
+  return newlyUnlocked;
+}
+
 function renderHome(container){
   const dog = sk.getCurrentDog();
   if(!dog){ sk.goScreen("onboarding"); return; }
@@ -1215,7 +1272,7 @@ function renderHome(container){
       <button class="row" id="quickWhatTrain"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>What should I train?</div><div class="row-meta">Browse by category</div></div><span class="row-chev">›</span></button>
       <button class="row" id="quickBehaviour"><div class="row-tab" style="background:var(--red)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><path d="M4 5h16v10H8l-4 4z"/><path d="M12 8.5v2.5M12 14v.01"/></svg>Help with a behaviour</div><div class="row-meta">Answer a couple of questions</div></div><span class="row-chev">›</span></button>
       <button class="row" id="quickBrowse"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><path d="M4 5.5c0-.6.4-1 1-1h5.5a2 2 0 0 1 2 2v13a1.5 1.5 0 0 0-1.5-1.5H4z"/><path d="M20 5.5c0-.6-.4-1-1-1h-5.5a2 2 0 0 0-2 2v13a1.5 1.5 0 0 1 1.5-1.5H20z"/></svg>Browse all lessons</div><div class="row-meta">${sk.KB.collections.lessons.length} lessons in the library</div></div><span class="row-chev">›</span></button>
-      <button class="row" id="quickClicker"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">🔨 Clicker</div><div class="row-meta">A tap-to-click sound, ready anytime</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="quickClicker"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">👆 Clicker</div><div class="row-meta">A tap-to-click sound, ready anytime</div></div><span class="row-chev">›</span></button>
       <button class="row" id="quickGames"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title">🎮 Games</div><div class="row-meta">Fun ways to play, bond, and enrich</div></div><span class="row-chev">›</span></button>
       <button class="row" id="quickWalks"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">🚶 Walks</div><div class="row-meta">Track a walk's time and distance</div></div><span class="row-chev">›</span></button>
     </div>
@@ -1299,10 +1356,11 @@ function openGamesModal(){
 function openClickerModal(){
   let count = 0;
   sk.openModal(`
+    <img src="images/clicker-hero.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;">
     <h3 style="text-align:center;">Clicker</h3>
     <p style="color:var(--ink-soft); font-size:13px; text-align:center; margin-bottom:24px;">Tap the button to hear a click — mark the moment, then reward.</p>
     <div style="display:flex; justify-content:center; margin-bottom:20px;">
-      <button id="clickerMainBtn" aria-label="Play click sound" style="width:180px; height:180px; border-radius:50%; border:none; background:var(--forest); color:#fff; font-size:20px; font-weight:700; font-family:var(--font-display); cursor:pointer; box-shadow:var(--shadow-card);">🔨 Click</button>
+      <button id="clickerMainBtn" aria-label="Play click sound" style="width:180px; height:180px; border-radius:50%; border:none; background:var(--forest); color:#fff; font-size:20px; font-weight:700; font-family:var(--font-display); cursor:pointer; box-shadow:var(--shadow-card);">👆 Click</button>
     </div>
     <p style="text-align:center; color:var(--ink-soft); font-size:13px;" id="clickerCount">0 clicks this session</p>
   `);
@@ -1419,6 +1477,7 @@ function openWalkTracker(){
     const walk = sk.activeWalk && sk.activeWalk.dogId===dog.id ? sk.activeWalk : null;
 
     sk.openModal(`
+      ${walk ? "" : `<img src="images/walks-hero.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;">`}
       <h3>${sk.esc(dog.name)}'s walks</h3>
       ${walk ? `
         <div class="card" style="text-align:center;">
@@ -1692,6 +1751,9 @@ window.__sk.longestStreakEver = longestStreakEver;
 window.__sk.totalLessonsCompleted = totalLessonsCompleted;
 window.__sk.skillSummary = skillSummary;
 window.__sk.trainingStreak = trainingStreak;
+window.__sk.walkStreak = walkStreak;
+window.__sk.checkHiddenAchievements = checkHiddenAchievements;
+window.__sk.HIDDEN_ACHIEVEMENTS = HIDDEN_ACHIEVEMENTS;
 window.__sk.praiseWordFor = praiseWordFor;
 window.__sk.recentSessions = recentSessions;
 })();
@@ -1708,6 +1770,7 @@ function renderLessons(container){
   const dog = sk.getCurrentDog();
 
   container.innerHTML = `
+    <img src="images/hero-train.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;">
     ${dog ? `
     <button class="row" id="viewSkillsRow" style="margin-bottom:14px;">
       <div class="row-tab" style="background:var(--forest)"></div>
@@ -2324,7 +2387,7 @@ function renderSessionScreen(){
         <button class="btn btn-primary btn-block" id="repSuccess">✓ Success</button>
         <button class="btn btn-ghost btn-block" id="repMiss">✗ No luck</button>
       </div>
-      <button class="btn btn-secondary btn-block" id="clickerBtn" style="margin-top:10px;">🔨 Click</button>
+      <button class="btn btn-secondary btn-block" id="clickerBtn" style="margin-top:10px;">👆 Click</button>
     </div>
 
     <div class="section-label" role="heading" aria-level="2">
@@ -2449,6 +2512,7 @@ function recordLessonAttempt(dog, l, reps, feedback, programmeId){
     timesCompleted, avgSuccess, lastPracticed: rec.date,
     lastVerdict: verdict, lastFeedback: feedback
   };
+  sk.checkHiddenAchievements(dog.id);
   return { rate, successCount, total, verdict, verdictText, cls };
 }
 
@@ -2628,6 +2692,7 @@ function renderBehaviours(container){
   sk.setTopbar("Behaviour guide", "Find management & training routes", "");
   const list = sk.KB.collections.behaviours;
   container.innerHTML = `
+    <img src="images/hero-behaviour.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;">
     <div class="search-input-wrap">
       <span class="sicon">🔍</span>
       <input type="text" id="behaviourSearch" placeholder="Search behaviours…">
@@ -2912,13 +2977,9 @@ function openCompareDogs(){
   `);
 }
 
-function renderMore(container){
-  sk.setTopbar("Profile", "Dog, safety & data", "");
+function renderProfile(container){
+  sk.setTopbar("Profile", "Your dog's details & achievements", "");
   const dog = sk.getCurrentDog();
-  const currentTheme = (sk.DB.settings && sk.DB.settings.theme) || "auto";
-  const voiceOn = sk.isVoiceEnabled();
-  const quietHours = sk.getQuietHours();
-  const silentBypassOn = sk.isSilentModeBypassEnabled();
   container.innerHTML = `
     <div class="section-label" role="heading" aria-level="2">Dogs</div>
     <div class="row-list">
@@ -2931,6 +2992,13 @@ function renderMore(container){
       <button class="row" id="addDogRow"><div class="avatar" style="background:var(--line); color:var(--ink-soft);">+</div><div class="row-body"><div class="row-title">Add another dog</div></div></button>
       ${sk.DB.dogs.length > 1 ? `<button class="row" id="compareDogsRow"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">Compare dogs</div><div class="row-meta">Progress side by side</div></div><span class="row-chev">›</span></button>` : ""}
       <button class="row" id="trackWeightRow"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">⚖️ Track weight</div><div class="row-meta">Log and chart weight over time</div></div><span class="row-chev">›</span></button>
+    </div>
+
+    <div class="section-label" role="heading" aria-level="2">${dog?sk.esc(dog.name)+"'s achievements":"Achievements"}</div>
+    <div class="card">
+      <button class="btn btn-secondary btn-block" id="reportBtn">Training report (shareable summary)</button>
+      <button class="btn btn-secondary btn-block" id="certBtn" style="margin-top:8px;">🏅 Certificate of achievement</button>
+      <button class="btn btn-secondary btn-block" id="printLogBtn" style="margin-top:8px;">Print / export full training log</button>
     </div>
 
     <div class="section-label" role="heading" aria-level="2">Daily programmes</div>
@@ -2959,7 +3027,38 @@ function renderMore(container){
       <button class="row" id="protocolsRow"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title">Training protocols</div><div class="row-meta">${sk.KB.collections.protocols.length} core frameworks for common training situations</div></div><span class="row-chev">›</span></button>
       <button class="row" id="mediaGalleryRow"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">Media gallery</div><div class="row-meta">Every lesson with a real photo, in one place</div></div><span class="row-chev">›</span></button>
     </div>
+  `;
 
+  container.querySelectorAll("[data-dog]").forEach(r=>r.addEventListener("click", ()=>{
+    const d = sk.DB.dogs.find(x=>x.id===r.dataset.dog);
+    sk.renderDogForm(d);
+  }));
+  container.querySelector("#addDogRow").addEventListener("click", ()=>sk.renderDogForm(null));
+  const compareBtn = container.querySelector("#compareDogsRow");
+  if(compareBtn) compareBtn.addEventListener("click", openCompareDogs);
+  container.querySelector("#trackWeightRow").addEventListener("click", ()=>sk.openWeightTracker());
+  container.querySelector("#reportBtn").addEventListener("click", openTrainingReport);
+  container.querySelector("#certBtn").addEventListener("click", openCertificateList);
+  container.querySelector("#printLogBtn").addEventListener("click", openPrintableLog);
+  container.querySelectorAll("[data-programme]").forEach(r=>r.addEventListener("click", ()=>openProgrammeDetail(r.dataset.programme)));
+  container.querySelector("#safetyRow").addEventListener("click", openSafetyReference);
+  container.querySelector("#mythsRow").addEventListener("click", openMythsReference);
+  container.querySelector("#bodyLangRow").addEventListener("click", openBodyLanguageGuide);
+  container.querySelector("#guidanceRow").addEventListener("click", openGuidanceReference);
+  container.querySelector("#troubleshootRow").addEventListener("click", openTroubleshootPicker);
+  container.querySelector("#evidenceRow").addEventListener("click", openEvidenceReference);
+  container.querySelector("#rulesRow").addEventListener("click", openRulesReference);
+  container.querySelector("#protocolsRow").addEventListener("click", openProtocolsReference);
+  container.querySelector("#mediaGalleryRow").addEventListener("click", openMediaGallery);
+}
+
+function renderSettings(container){
+  sk.setTopbar("Settings", "App preferences & data", "");
+  const currentTheme = (sk.DB.settings && sk.DB.settings.theme) || "auto";
+  const voiceOn = sk.isVoiceEnabled();
+  const quietHours = sk.getQuietHours();
+  const silentBypassOn = sk.isSilentModeBypassEnabled();
+  container.innerHTML = `
     <div class="section-label" role="heading" aria-level="2">Appearance</div>
     <div class="card">
       <div class="chip-group" id="themeChips" style="margin-bottom:0;">
@@ -3032,37 +3131,10 @@ function renderMore(container){
       <button class="btn btn-secondary btn-block" id="exportBtn">Export backup (.json)</button>
       <button class="btn btn-ghost btn-block" id="importBtn" style="margin-top:8px;">Import backup</button>
       <input type="file" id="importFile" accept="application/json" style="display:none;">
-      <button class="btn btn-secondary btn-block" id="reportBtn" style="margin-top:8px;">Training report (shareable summary)</button>
-      <button class="btn btn-secondary btn-block" id="certBtn" style="margin-top:8px;">🏅 Certificate of achievement</button>
-      <button class="btn btn-secondary btn-block" id="printLogBtn" style="margin-top:8px;">Print / export full training log</button>
       <button class="btn btn-danger btn-block" id="resetBtn" style="margin-top:8px;">Reset all data</button>
-    </div>
-
-    <div class="section-label" role="heading" aria-level="2">Sidekick</div>
-    <div class="row-list">
-      <button class="row" id="aboutRow"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title">About Sidekick</div><div class="row-meta">Support, other apps, privacy & version</div></div><span class="row-chev">›</span></button>
     </div>
   `;
 
-  container.querySelector("#aboutRow").addEventListener("click", ()=>sk.goScreen("about"));
-  container.querySelectorAll("[data-dog]").forEach(r=>r.addEventListener("click", ()=>{
-    const d = sk.DB.dogs.find(x=>x.id===r.dataset.dog);
-    sk.renderDogForm(d);
-  }));
-  container.querySelector("#addDogRow").addEventListener("click", ()=>sk.renderDogForm(null));
-  const compareBtn = container.querySelector("#compareDogsRow");
-  if(compareBtn) compareBtn.addEventListener("click", openCompareDogs);
-  container.querySelector("#trackWeightRow").addEventListener("click", ()=>sk.openWeightTracker());
-  container.querySelectorAll("[data-programme]").forEach(r=>r.addEventListener("click", ()=>openProgrammeDetail(r.dataset.programme)));
-  container.querySelector("#safetyRow").addEventListener("click", openSafetyReference);
-  container.querySelector("#mythsRow").addEventListener("click", openMythsReference);
-  container.querySelector("#bodyLangRow").addEventListener("click", openBodyLanguageGuide);
-  container.querySelector("#guidanceRow").addEventListener("click", openGuidanceReference);
-  container.querySelector("#troubleshootRow").addEventListener("click", openTroubleshootPicker);
-  container.querySelector("#evidenceRow").addEventListener("click", openEvidenceReference);
-  container.querySelector("#rulesRow").addEventListener("click", openRulesReference);
-  container.querySelector("#protocolsRow").addEventListener("click", openProtocolsReference);
-  container.querySelector("#mediaGalleryRow").addEventListener("click", openMediaGallery);
   container.querySelector("#themeChips").addEventListener("click", e=>{
     const b = e.target.closest(".chip"); if(!b) return;
     container.querySelectorAll("#themeChips .chip").forEach(c=>c.classList.remove("selected"));
@@ -3072,7 +3144,7 @@ function renderMore(container){
   container.querySelector("#voiceToggle").addEventListener("click", ()=>{
     const now = !sk.isVoiceEnabled();
     sk.setVoiceEnabled(now);
-    renderMore(container); // repaint so the switch position and aria-checked update
+    renderSettings(container); // repaint so the switch position and aria-checked update
     if(now) sk.speak("Voice guidance on");
   });
   const voiceSelect = container.querySelector("#voiceSelect");
@@ -3097,7 +3169,7 @@ function renderMore(container){
   container.querySelector("#quietHoursToggle").addEventListener("click", ()=>{
     const q = sk.getQuietHours();
     sk.setQuietHours(!q.enabled, q.start, q.end);
-    renderMore(container);
+    renderSettings(container);
   });
   const qStart = container.querySelector("#quietHoursStart");
   const qEnd = container.querySelector("#quietHoursEnd");
@@ -3111,13 +3183,10 @@ function renderMore(container){
   });
   container.querySelector("#silentBypassToggle").addEventListener("click", ()=>{
     sk.setSilentModeBypassEnabled(!sk.isSilentModeBypassEnabled());
-    renderMore(container);
+    renderSettings(container);
   });
   container.querySelector("#integrityBtn").addEventListener("click", ()=>runIntegrityCheckUI(container));
   container.querySelector("#exportBtn").addEventListener("click", exportBackup);
-  container.querySelector("#printLogBtn").addEventListener("click", openPrintableLog);
-  container.querySelector("#reportBtn").addEventListener("click", openTrainingReport);
-  container.querySelector("#certBtn").addEventListener("click", openCertificateList);
   container.querySelector("#importBtn").addEventListener("click", ()=>container.querySelector("#importFile").click());
   container.querySelector("#importFile").addEventListener("change", importBackup);
   container.querySelector("#resetBtn").addEventListener("click", confirmReset);
@@ -3246,7 +3315,7 @@ function renderProgrammeBlock(){
         <button class="btn btn-primary btn-block" id="repSuccess">✓ Success</button>
         <button class="btn btn-ghost btn-block" id="repMiss">✗ No luck</button>
       </div>
-      <button class="btn btn-secondary btn-block" id="clickerBtn" style="margin-top:10px;">🔨 Click</button>
+      <button class="btn btn-secondary btn-block" id="clickerBtn" style="margin-top:10px;">👆 Click</button>
     </div>
 
     <div class="section-label" role="heading" aria-level="2">
@@ -3315,7 +3384,7 @@ function renderProgrammeBlock(){
     clearTimeout(highlightTimer);
     const wasAdHoc = !prog.programmeId;
     sk.setActiveProgramme(null);
-    sk.goScreen(wasAdHoc ? "home" : "more");
+    sk.goScreen(wasAdHoc ? "home" : "profile");
   });
 }
 
@@ -3432,6 +3501,7 @@ function openMythsReference(){
 function openTroubleshootPicker(){
   const trees = sk.KB.collections.troubleshooting_trees;
   sk.openModal(`
+    <img src="images/hero-behaviour-help.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;">
     <h3>My dog is...</h3>
     <p style="color:var(--ink-soft); font-size:13px; margin-bottom:12px;">Pick what's going on, then answer a couple of quick questions.</p>
     <div class="row-list">
@@ -3620,9 +3690,27 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "7.2.0";
+const APP_VERSION = "8.1.0";
 
 const CHANGELOG = [
+  { version: "8.1.0", notes: [
+    "New: hidden achievements — surprise badges that only appear once earned, unlike the visible certificates which show progress toward them. First Steps (first lesson), Week Warrior (7-day training streak), Iron Will (30-day streak), Dedicated Walker (7-day walk streak), Clicker Novice (100 lifetime clicks), and Clicker Master (1000 clicks). Each fires an immediate toast the moment it unlocks, then appears permanently in a \"Bonus achievements\" section at the bottom of the Certificates screen",
+    "Fixed a real bug caught during testing, not shipped blind: the click- and walk-based achievement checks were silently failing on every single trigger, because the code assumed a shortcut alias (\"sk\") that doesn't exist in that particular part of the file — every other reference there correctly spells out the full name instead. The click counter was incrementing fine the whole time; only the achievement check itself was silently never running, hidden by a try/catch that was meant to hide unrelated audio errors, not this",
+    "Also added hero images to Train, Behaviour, Progress, and the \"Help with a behaviour\" modal",
+  ]},
+  { version: "8.0.0", notes: [
+    "Major navigation restructure: Profile was doing too much, so it's now split three ways. Profile is a genuine dog profile — dogs, weight tracking, and achievements (report/certificate/log) — plus daily programmes and the reference library. A new Settings tab holds app preferences: appearance, voice guidance, quiet hours, the clicker's silent-mode option, the content checker, and data (backup/import/reset). About moved to a \"❓\" icon in the top bar next to the theme toggle, rather than adding a 7th tab",
+    "The bottom tab bar now has 6 tabs (Home, Train, Behaviour, Progress, Profile, Settings) — checked this still fits comfortably on a narrow phone screen before committing to it",
+  ]},
+  { version: "7.4.0", notes: [
+    "New: real one-click PDF download for certificates — loads html2canvas and jsPDF from a CDN only when Download PDF is actually clicked, so it adds no weight to normal app use. Falls back gracefully to the print dialog (with a clear explanation) if the libraries can't be fetched, e.g. no connection",
+    "The clicker's hammer emoji is now a pointing-finger emoji everywhere it appears, and both the Clicker and Walks tools now open with a real photo header",
+  ]},
+  { version: "7.3.0", notes: [
+    "Certificate redesign per feedback: the dog's name is now the clear visual centre (Certificate of Achievement → subtitle → \"Awarded to\" → name, large → achievement text), the background watermark is far more subtle (down to ~7% opacity), the holo mark is smaller and sits as an authenticity mark rather than competing for attention, the gold seal is larger as the certificate's visual anchor, and the footer is a single understated centred line",
+    "Added a separate Download PDF button alongside Print, and fixed the browser's default print header/footer clutter via proper @page margins. Being upfront: a true one-click direct-to-file PDF download needs a PDF-generation library, which this project has avoided everywhere else — both buttons open the print dialog, where \"Save as PDF\" is the genuine download path",
+    "Fixed a layout bug caught in testing: the certificate's footer and the holo mark briefly overlapped again after resizing both",
+  ]},
   { version: "7.2.0", notes: [
     "New: Walks (Home → 🚶 Walks) — duration always tracks reliably via a plain timer; distance is a best-effort GPS layer on top, verified accurate against a known coordinate distance in testing. Being upfront in the UI: continuous background GPS isn't reliably supported once your screen locks, so accuracy is best while Sidekick stays open",
     "A manual-entry option covers everything else — forgetting to start tracking, leaving your phone at home, or logging a past walk",
@@ -4305,6 +4393,7 @@ function openCertificateList(){
   const dog = sk.getCurrentDog();
   if(!dog){ sk.showToast("Add a dog first."); return; }
   const certs = getCertificateProgress(dog.id);
+  const unlockedHidden = sk.HIDDEN_ACHIEVEMENTS.filter(a=>sk.DB.hiddenAchievements.includes(a.id));
   sk.openModal(`
     <h3 style="text-align:center; margin-bottom:4px;">Certificates</h3>
     <p style="text-align:center; color:var(--ink-soft); font-size:13px; margin-bottom:16px;">Earn a certificate for ${sk.esc(dog.name)}'s overall progress, or for fully completing a category.</p>
@@ -4322,6 +4411,21 @@ function openCertificateList(){
         </button>`;
       }).join("")}
     </div>
+
+    ${unlockedHidden.length ? `
+    <div class="section-label" role="heading" aria-level="2" style="margin-top:20px;">Bonus achievements</div>
+    <p style="color:var(--ink-soft); font-size:12px; margin-top:-4px; margin-bottom:10px;">Surprises found along the way — there may be more still to discover.</p>
+    <div class="row-list">
+      ${unlockedHidden.map(a=>`
+        <div class="row" style="cursor:default;">
+          <div class="row-tab" style="background:var(--ochre)"></div>
+          <div class="row-body">
+            <div class="row-title">${a.emoji} ${sk.esc(a.label)}</div>
+            <div class="row-meta">${sk.esc(a.desc)}</div>
+          </div>
+        </div>
+      `).join("")}
+    </div>` : ""}
   `);
   document.querySelectorAll("[data-cert-idx]").forEach(btn=>{
     btn.addEventListener("click", ()=>{
@@ -4350,10 +4454,10 @@ function openCertificateView(dog, cert){
 
   const generatedDate = new Date().toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});
   const bodyText = cert.type === "general"
-    ? `has successfully completed <strong>${cert.completed} training lessons</strong>, using calm, positive, reward-based methods.`
+    ? `for successfully completing <strong>${cert.completed} training lessons</strong>, using calm, positive, reward-based methods.`
     : cert.type === "games"
-    ? `has played and completed <strong>every game</strong> in Sidekick — a true master of play, bonding, and enrichment.`
-    : `has successfully completed the <strong>${sk.esc(cert.category)}</strong> training category in full, using calm, positive, reward-based methods.`;
+    ? `for playing and completing <strong>every game</strong> in Sidekick — a true master of play, bonding, and enrichment.`
+    : `for successfully completing the <strong>${sk.esc(cert.category)}</strong> training category in full, using calm, positive, reward-based methods.`;
 
   const overlay = document.createElement("div");
   overlay.id = "certificateOverlay";
@@ -4361,15 +4465,18 @@ function openCertificateView(dog, cert){
   overlay.innerHTML = `
     <div class="print-toolbar no-print">
       <button class="btn btn-ghost" id="certClose">← Back</button>
-      <button class="btn btn-primary" id="certGo">🖨️ Print / Save as PDF</button>
+      <button class="btn btn-primary" id="certGo">🖨️ Print</button>
+      <button class="btn btn-secondary" id="certDownload">⬇️ Download PDF</button>
     </div>
     <div class="certificate-page">
       <div class="certificate-inner">
+        <img src="images/certificate-background.jpg" alt="" class="certificate-bg-watermark">
         <img src="images/logo-lockup-light.png" alt="Sidekick" class="certificate-logo">
         <img src="images/holo-icon.png" alt="" class="certificate-holo">
-        <img src="images/certificate-medal.png" alt="" style="width:74px; height:74px; object-fit:contain; position:relative;">
+        <img src="images/certificate-medal.png" alt="" style="width:88px; height:88px; object-fit:contain; position:relative;">
         <div class="certificate-title" style="position:relative;">Certificate of Achievement</div>
         <div class="certificate-sub" style="position:relative;">${cert.type==="general"?"Reward-Based Training":cert.type==="games"?"Play &amp; Enrichment":sk.esc(cert.category)}</div>
+        <div class="certificate-awardedto" style="position:relative;">Awarded to</div>
         <div class="certificate-dogname" style="position:relative;">${sk.esc(dog.name)}</div>
         <div class="certificate-body" style="position:relative;">${bodyText}</div>
         <div class="certificate-signoff">
@@ -4378,16 +4485,60 @@ function openCertificateView(dog, cert){
           <div class="certificate-sig-text" style="display:none;">Duffers</div>
           <div class="certificate-sig-line">Awarded by</div>
         </div>
-        <div class="certificate-footer">
-          <div>Generated ${generatedDate}</div>
-          <div>Sidekick — reward-based dog training</div>
-        </div>
+        <div class="certificate-footer">${generatedDate} &nbsp;•&nbsp; SIDEKICK &nbsp;•&nbsp; Reward-based dog training</div>
       </div>
     </div>
   `;
   document.body.appendChild(overlay);
   document.getElementById("certClose").addEventListener("click", ()=>overlay.remove());
   document.getElementById("certGo").addEventListener("click", ()=>window.print());
+  document.getElementById("certDownload").addEventListener("click", ()=>downloadCertificatePDF(dog, overlay));
+}
+
+// Loads a script from a CDN on demand and caches the promise, so repeated
+// calls (e.g. clicking Download PDF twice) don't re-fetch or re-inject it.
+const _scriptLoadPromises = {};
+function loadScriptOnce(url){
+  if(_scriptLoadPromises[url]) return _scriptLoadPromises[url];
+  _scriptLoadPromises[url] = new Promise((resolve, reject)=>{
+    const s = document.createElement("script");
+    s.src = url;
+    s.onload = resolve;
+    s.onerror = ()=>{ delete _scriptLoadPromises[url]; reject(new Error("Failed to load "+url)); };
+    document.head.appendChild(s);
+  });
+  return _scriptLoadPromises[url];
+}
+
+// Renders the certificate to a real, directly-downloaded .pdf file.
+// html2canvas + jsPDF are loaded from a CDN only when this is actually
+// used, rather than adding weight to every page load. Falls back to the
+// print dialog if the libraries can't be fetched (e.g. no connection) --
+// duration/behaviour-wise identical to what the Print button already does,
+// so nothing is lost if this path fails.
+async function downloadCertificatePDF(dog, overlay){
+  const btn = document.getElementById("certDownload");
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Generating…";
+  try{
+    await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+    await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+    const target = overlay.querySelector(".certificate-page");
+    const canvas = await window.html2canvas(target, { scale:2, useCORS:true, backgroundColor:"#ffffff" });
+    const imgData = canvas.toDataURL("image/jpeg", 0.95);
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation:"landscape", unit:"px", format:[canvas.width, canvas.height] });
+    pdf.addImage(imgData, "JPEG", 0, 0, canvas.width, canvas.height);
+    const safeName = (dog.name||"dog").replace(/[^a-z0-9]+/gi,"-").toLowerCase();
+    pdf.save(`sidekick-certificate-${safeName}.pdf`);
+  }catch(e){
+    sk.showToast("Couldn't generate the PDF directly — opening print instead.");
+    window.print();
+  }finally{
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
 }
 
 function openTrainingReport(){
@@ -4536,7 +4687,8 @@ function confirmReset(){
   document.getElementById("cancelResetBtn").addEventListener("click", sk.closeModal);
 }
 
-sk.SCREEN_RENDERERS.more = renderMore;
+sk.SCREEN_RENDERERS.profile = renderProfile;
+sk.SCREEN_RENDERERS.settings = renderSettings;
 window.__sk.openLessonPrintView = openLessonPrintView;
 })();
 
@@ -4590,7 +4742,7 @@ function renderProgress(container){
   }
   const sessions = sk.DB.sessions.filter(s=>s.dogId===dog.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
   if(!sessions.length){
-    container.innerHTML = `<div class="empty-state"><span class="glyph">📈</span>No sessions logged yet for ${sk.esc(dog.name)}.<br>Complete a lesson to start building a history.</div>`;
+    container.innerHTML = `<img src="images/hero-progress.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;"><div class="empty-state"><span class="glyph">📈</span>No sessions logged yet for ${sk.esc(dog.name)}.<br>Complete a lesson to start building a history.</div>`;
     return;
   }
 
@@ -4602,6 +4754,7 @@ function renderProgress(container){
   const maxCat = Math.max(1, ...categories.map(c=>c[1]));
 
   container.innerHTML = `
+    <img src="images/hero-progress.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;">
     <div class="stat-grid">
       <div class="stat-box"><div class="num">${stats.total}</div><div class="lbl">Sessions</div></div>
       <div class="stat-box"><div class="num">${stats.days}</div><div class="lbl">Training days</div></div>

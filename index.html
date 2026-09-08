@@ -424,6 +424,7 @@ textarea{resize:vertical; min-height:70px;}
   body{ padding-bottom:0; }
   .certificate-page{ size:landscape; aspect-ratio:1.6/1; max-width:none; }
   .certificate-inner{ padding:40px 60px; }
+  @page{ margin:0.3in; }
 }
 
 .certificate-page{
@@ -435,21 +436,25 @@ textarea{resize:vertical; min-height:70px;}
   border:1.5px solid #986E22; box-sizing:border-box;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
   text-align:center; padding:36px 24px; font-family:var(--font-body);
-  background-image:url(images/certificate-background.jpg);
-  background-size:cover; background-position:center;
+  background:#FBF8F0;
+}
+.certificate-bg-watermark{
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:100%; height:100%; object-fit:cover; opacity:0.07; z-index:0; pointer-events:none;
   -webkit-print-color-adjust:exact; print-color-adjust:exact;
 }
-.certificate-holo{position:absolute; bottom:14px; right:16px; width:64px; height:64px; z-index:1;}
+.certificate-holo{position:absolute; bottom:14px; right:16px; width:50px; height:50px; z-index:1;}
 .certificate-logo{position:absolute; top:14px; left:16px; height:22px; width:auto; z-index:1;}
-.certificate-title{position:relative; z-index:1; font-family:var(--font-display); font-size:26px; color:#2F5233; margin:10px 0 2px; letter-spacing:0.01em;}
-.certificate-sub{position:relative; z-index:1; font-size:13px; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.15em; margin-bottom:20px;}
-.certificate-dogname{position:relative; z-index:1; font-family:var(--font-display); font-size:44px; color:#986E22; margin:14px 0; border-bottom:2px solid #986E22; display:inline-block; padding:0 20px 6px;}
-.certificate-body{position:relative; z-index:1; font-size:15px; color:#333; max-width:560px; line-height:1.6; margin-bottom:6px;}
-.certificate-signoff{position:relative; z-index:1; margin-top:18px; text-align:center;}
+.certificate-title{position:relative; z-index:1; font-family:var(--font-display); font-size:26px; color:#2F5233; margin:0 0 2px; letter-spacing:0.01em;}
+.certificate-sub{position:relative; z-index:1; font-size:13px; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.15em; margin-bottom:28px;}
+.certificate-awardedto{position:relative; z-index:1; font-size:12px; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.15em; margin-bottom:8px;}
+.certificate-dogname{position:relative; z-index:1; font-family:var(--font-display); font-size:52px; color:#986E22; margin:0 0 28px; border-bottom:2px solid #986E22; display:inline-block; padding:0 24px 10px;}
+.certificate-body{position:relative; z-index:1; font-size:15px; color:#333; max-width:560px; line-height:1.6; margin-bottom:32px;}
+.certificate-signoff{position:relative; z-index:1; text-align:center; margin-bottom:28px;}
 .certificate-sig-img{height:46px; width:auto; display:block; margin:0 auto;}
 .certificate-sig-text{font-family:'Caveat', cursive; font-size:34px; color:#1F3A24; line-height:1;}
 .certificate-sig-line{border-top:1px solid #999; margin-top:2px; padding-top:3px; font-size:11px; color:#777; min-width:120px;}
-.certificate-footer{position:relative; z-index:1; display:flex; justify-content:space-between; width:100%; max-width:600px; margin-top:20px; padding-right:56px; font-size:12px; color:#666;}
+.certificate-footer{position:relative; z-index:1; text-align:center; font-size:11px; letter-spacing:0.08em; color:#888; text-transform:uppercase; padding:0 46px;}
 </style>
 </head>
 <body data-theme="auto">
@@ -470,6 +475,7 @@ textarea{resize:vertical; min-height:70px;}
     </div>
     <div class="topbar-actions" id="topbarActions"></div>
     <button class="icon-btn" id="topbarThemeToggle" aria-label="Switch to dark mode" title="Toggle dark mode" style="flex:none;">🌙</button>
+    <button class="icon-btn" id="topbarAboutBtn" aria-label="About Sidekick" title="About" style="flex:none;">❓</button>
   </div>
 
   <!-- ===================== SCREENS ===================== -->
@@ -481,7 +487,8 @@ textarea{resize:vertical; min-height:70px;}
     <button class="tab" data-screen="lessons"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5c0-.6.4-1 1-1h5.5a2 2 0 0 1 2 2v13a1.5 1.5 0 0 0-1.5-1.5H4z"/><path d="M20 5.5c0-.6-.4-1-1-1h-5.5a2 2 0 0 0-2 2v13a1.5 1.5 0 0 1 1.5-1.5H20z"/></svg></span>Train</button>
     <button class="tab" data-screen="behaviours"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-2 5-5 2 2-5z"/></svg></span>Behaviour</button>
     <button class="tab" data-screen="progress"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M6 15l4-5 3 3 5-7"/><path d="M14 6h4v4"/></svg></span>Progress</button>
-    <button class="tab" data-screen="more"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 20c.8-3.4 3.4-5.5 6.5-5.5s5.7 2.1 6.5 5.5"/></svg></span>Profile</button>
+    <button class="tab" data-screen="profile"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 20c.8-3.4 3.4-5.5 6.5-5.5s5.7 2.1 6.5 5.5"/></svg></span>Profile</button>
+    <button class="tab" data-screen="settings"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V19a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.04 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H10a1.7 1.7 0 0 0 1.04-1.56V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V10a1.7 1.7 0 0 0 1.56 1.04H20a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04z"/></svg></span>Settings</button>
   </div>
 
   <div class="modal-overlay" id="modalOverlay">
