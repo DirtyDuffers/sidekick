@@ -431,18 +431,25 @@ textarea{resize:vertical; min-height:70px;}
   border:3px solid #2F5233; padding:12px; box-sizing:border-box;
 }
 .certificate-inner{
+  position:relative; overflow:hidden;
   border:1.5px solid #986E22; box-sizing:border-box;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
   text-align:center; padding:36px 24px; font-family:var(--font-body);
-  background:
-    radial-gradient(circle at top left, rgba(47,82,51,0.06), transparent 40%),
-    radial-gradient(circle at bottom right, rgba(152,110,34,0.06), transparent 40%);
+  background-image:url(images/certificate-background.jpg);
+  background-size:cover; background-position:center;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact;
 }
-.certificate-title{font-family:var(--font-display); font-size:26px; color:#2F5233; margin:10px 0 2px; letter-spacing:0.01em;}
-.certificate-sub{font-size:13px; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.15em; margin-bottom:20px;}
-.certificate-dogname{font-family:var(--font-display); font-size:44px; color:#986E22; margin:14px 0; border-bottom:2px solid #986E22; display:inline-block; padding:0 20px 6px;}
-.certificate-body{font-size:15px; color:#333; max-width:560px; line-height:1.6; margin-bottom:18px;}
-.certificate-footer{display:flex; justify-content:space-between; width:100%; max-width:600px; margin-top:20px; font-size:12px; color:#666;}
+.certificate-holo{position:absolute; bottom:14px; right:16px; width:64px; height:64px; z-index:1;}
+.certificate-logo{position:absolute; top:14px; left:16px; height:22px; width:auto; z-index:1;}
+.certificate-title{position:relative; z-index:1; font-family:var(--font-display); font-size:26px; color:#2F5233; margin:10px 0 2px; letter-spacing:0.01em;}
+.certificate-sub{position:relative; z-index:1; font-size:13px; color:#8a8a7a; text-transform:uppercase; letter-spacing:0.15em; margin-bottom:20px;}
+.certificate-dogname{position:relative; z-index:1; font-family:var(--font-display); font-size:44px; color:#986E22; margin:14px 0; border-bottom:2px solid #986E22; display:inline-block; padding:0 20px 6px;}
+.certificate-body{position:relative; z-index:1; font-size:15px; color:#333; max-width:560px; line-height:1.6; margin-bottom:6px;}
+.certificate-signoff{position:relative; z-index:1; margin-top:18px; text-align:center;}
+.certificate-sig-img{height:46px; width:auto; display:block; margin:0 auto;}
+.certificate-sig-text{font-family:'Caveat', cursive; font-size:34px; color:#1F3A24; line-height:1;}
+.certificate-sig-line{border-top:1px solid #999; margin-top:2px; padding-top:3px; font-size:11px; color:#777; min-width:120px;}
+.certificate-footer{position:relative; z-index:1; display:flex; justify-content:space-between; width:100%; max-width:600px; margin-top:20px; padding-right:56px; font-size:12px; color:#666;}
 </style>
 </head>
 <body data-theme="auto">

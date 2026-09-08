@@ -18,6 +18,18 @@ const CATEGORY_COLOR_VARS = {
   "Assessment":"--cat-assess","Safety & Referral":"--cat-safety","Advanced / Real World":"--cat-advanced",
   "Troubleshooting":"--cat-trouble","Behaviour Assessment":"--cat-assess","Mouthing & Bite Inhibition":"--cat-mouth"
 };
+// Categories genuinely worth a completion certificate -- deliberately excludes
+// the diagnostic/reference categories (Assessment, Safety & Referral,
+// Behaviour Assessment, Troubleshooting), since finishing those represents
+// working through reference material, not a trained skill.
+const CERTIFICATE_CATEGORIES = [
+  "Foundation","Communication & Engagement","Basic Skills","Life Skills",
+  "Calmness & Regulation","Walking","Recall","Socialisation",
+  "Handling & Cooperative Care","Home Manners","Alone Time","Barking",
+  "Chewing & Destruction","Resource Guarding","Chasing & Predatory Behaviour",
+  "Reactivity","Enrichment","Tricks & Games","Owner Skills",
+  "Advanced / Real World","Mouthing & Bite Inhibition",
+];
 const CATEGORY_ICON = {
   "Foundation":"🌱","Communication & Engagement":"👀","Basic Skills":"🐾","Life Skills":"🏠",
   "Calmness & Regulation":"🧘","Walking":"🚶","Recall":"📣","Socialisation":"🐕‍🦺",
@@ -524,7 +536,7 @@ window.__sk = {
   get activeSession(){return activeSession;}, setActiveSession(v){activeSession=v;},
   get activeProgramme(){return activeProgramme;}, setActiveProgramme(v){activeProgramme=v;},
   CATEGORY_COLOR_VARS, CATEGORY_ICON, SKILL_STATES, STATE_COLOR, ADAPTIVE_FEEDBACK, FEEDBACK_DISPLAY,
-  AVATAR_COLORS, DOG_EMOJI, AGE_STAGES, GENDERS, GAMES_LIST,
+  AVATAR_COLORS, DOG_EMOJI, AGE_STAGES, GENDERS, GAMES_LIST, CERTIFICATE_CATEGORIES,
   splitPipe, splitSemi, getCategoryVar, getCategoryIcon,
   getCurrentDog, ensureCurrentDog, dogSkillState, setDogSkillState, dogLessonProgress,
   isFavourite, toggleFavourite, getLessonNote, setLessonNote,
@@ -2920,7 +2932,7 @@ function renderMore(container){
   container.querySelector("#exportBtn").addEventListener("click", exportBackup);
   container.querySelector("#printLogBtn").addEventListener("click", openPrintableLog);
   container.querySelector("#reportBtn").addEventListener("click", openTrainingReport);
-  container.querySelector("#certBtn").addEventListener("click", openCertificate);
+  container.querySelector("#certBtn").addEventListener("click", openCertificateList);
   container.querySelector("#importBtn").addEventListener("click", ()=>container.querySelector("#importFile").click());
   container.querySelector("#importFile").addEventListener("change", importBackup);
   container.querySelector("#resetBtn").addEventListener("click", confirmReset);
@@ -3423,9 +3435,20 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "6.4.0";
+const APP_VERSION = "7.1.0";
 
 const CHANGELOG = [
+  { version: "7.1.0", notes: [
+    "Certificate visuals corrected per feedback: the holographic icon is now a fully-visible image in the bottom-right corner rather than a faded watermark, and the new decorative background (with its own subtle S mark and line art) fills the whole certificate instead",
+    "The \"Duffers\" signature now tries an image first (for a genuine hand-drawn look once one's provided), falling back cleanly to styled text if the image isn't there yet — no broken-image icon either way",
+    "New: 🎮 Games Master certificate — unlocks once every game in the Games section has been played at least once",
+    "Fixed a layout bug caught in testing: the holo icon and the certificate's own footer text were briefly overlapping in the bottom-right corner",
+  ]},
+  { version: "7.0.0", notes: [
+    "Certificates redesigned: a subtle holographic watermark of the Sidekick icon, the full wordmark logo in the corner, and a \"Duffers\" signature in a handwriting-style font (loaded on demand, with a clean fallback if offline)",
+    "New: Certificate categories — instead of just one generic \"10 lessons\" certificate, there's now a full Certificates screen listing an Overall Achievement certificate plus one for every major training category (Foundation, Recall, Walking, Reactivity, and 18 more), each unlocking once every lesson in that category is completed",
+    "Locked certificates show real progress (\"14 / 28 lessons\") rather than just a lock icon with no context",
+  ]},
   { version: "6.4.0", notes: [
     "29 more lessons given real photos across two large batches: novel-object shaping, child-dog greetings, toilet training (outdoor and indoor-pad variants), furniture access boundaries, redirect-to-chew, ear handling, clippers introduction, plus 8 more Settle variants (handler movement, mild distraction, extended duration, owner walking away) and 8 more Threshold-distance variants (joggers, delivery vans, cyclists, dog-to-dog at various distances)",
     "125 lessons now have a real photo, up from 96",
@@ -4050,25 +4073,97 @@ function openLessonPrintView(l){
 // Gated on a modest lesson-count threshold so it reflects genuine progress
 // rather than being available from the very first session.
 const CERTIFICATE_THRESHOLD = 10;
-function openCertificate(){
+
+// Every possible certificate for this dog: the general "X lessons completed"
+// one, plus one per eligible category, each requiring that category's
+// lessons be fully completed -- a clean, unambiguous bar rather than an
+// arbitrary percentage.
+function getCertificateProgress(dogId){
+  const lessons = sk.KB.collections.lessons;
+  const progress = sk.DB.lessonProgress[dogId] || {};
+  const totalCompleted = sk.totalLessonsCompleted(dogId);
+
+  const list = [{
+    type: "general", category: null, label: "Overall Achievement",
+    completed: totalCompleted, total: CERTIFICATE_THRESHOLD,
+    unlocked: totalCompleted >= CERTIFICATE_THRESHOLD,
+  }];
+
+  const gamesDone = sk.GAMES_LIST.filter(g=>progress[g.lessonId]).length;
+  list.push({
+    type: "games", category: null, label: "🎮 Games Master",
+    completed: gamesDone, total: sk.GAMES_LIST.length,
+    unlocked: gamesDone === sk.GAMES_LIST.length,
+  });
+
+  sk.CERTIFICATE_CATEGORIES.forEach(cat=>{
+    const inCat = lessons.filter(l=>l.category===cat);
+    const done = inCat.filter(l=>progress[l.lesson_id]).length;
+    list.push({
+      type: "category", category: cat, label: cat,
+      completed: done, total: inCat.length,
+      unlocked: inCat.length>0 && done === inCat.length,
+    });
+  });
+  return list;
+}
+
+// A browsable list of every certificate this dog could earn -- unlocked ones
+// open straight into the generated certificate; locked ones show progress
+// so there's a visible reason to keep training toward them.
+function openCertificateList(){
   const dog = sk.getCurrentDog();
   if(!dog){ sk.showToast("Add a dog first."); return; }
-  const lessonsCompleted = sk.totalLessonsCompleted(dog.id);
-  if(lessonsCompleted < CERTIFICATE_THRESHOLD){
-    sk.openModal(`
-      <h3 style="text-align:center;">Certificate</h3>
-      <p style="text-align:center; color:var(--ink-soft); font-size:14px; margin-top:8px;">
-        ${sk.esc(dog.name)} has completed ${lessonsCompleted} of ${CERTIFICATE_THRESHOLD} lessons needed to unlock a certificate. Keep training — not far to go!
-      </p>
-    `);
-    return;
-  }
-  const categoryCounts = {};
-  sk.KB.collections.lessons.forEach(l=>{
-    if(sk.DB.lessonProgress[dog.id]?.[l.lesson_id]) categoryCounts[l.category] = (categoryCounts[l.category]||0)+1;
+  const certs = getCertificateProgress(dog.id);
+  sk.openModal(`
+    <h3 style="text-align:center; margin-bottom:4px;">Certificates</h3>
+    <p style="text-align:center; color:var(--ink-soft); font-size:13px; margin-bottom:16px;">Earn a certificate for ${sk.esc(dog.name)}'s overall progress, or for fully completing a category.</p>
+    <div class="row-list">
+      ${certs.map((c,i)=>{
+        const pct = c.total ? Math.round(c.completed/c.total*100) : 0;
+        return `
+        <button class="row" data-cert-idx="${i}" style="${c.unlocked?'':'opacity:0.75;'}">
+          <div class="row-tab" style="background:${c.unlocked?'var(--ochre)':'var(--line)'}"></div>
+          <div class="row-body">
+            <div class="row-title">${c.unlocked?'🏅 ':'🔒 '}${sk.esc(c.label)}</div>
+            <div class="row-meta">${c.unlocked ? "Ready to view" : `${c.completed} / ${c.total} lessons (${pct}%)`}</div>
+          </div>
+          <span class="row-chev">›</span>
+        </button>`;
+      }).join("")}
+    </div>
+  `);
+  document.querySelectorAll("[data-cert-idx]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const c = certs[Number(btn.dataset.certIdx)];
+      if(!c.unlocked){
+        sk.showToast(`${c.completed} of ${c.total} lessons completed — keep going!`);
+        return;
+      }
+      sk.closeModal();
+      openCertificateView(dog, c);
+    });
   });
-  const topCategories = Object.entries(categoryCounts).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([c])=>c);
+}
+
+// The actual generated, printable certificate for one specific achievement.
+function openCertificateView(dog, cert){
+  // The signature font is only needed here, so it's loaded on demand rather
+  // than adding a network dependency to every page load.
+  if(!document.getElementById("certFontLink")){
+    const link = document.createElement("link");
+    link.id = "certFontLink";
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=Caveat:wght@600&display=swap";
+    document.head.appendChild(link);
+  }
+
   const generatedDate = new Date().toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});
+  const bodyText = cert.type === "general"
+    ? `has successfully completed <strong>${cert.completed} training lessons</strong>, using calm, positive, reward-based methods.`
+    : cert.type === "games"
+    ? `has played and completed <strong>every game</strong> in Sidekick — a true master of play, bonding, and enrichment.`
+    : `has successfully completed the <strong>${sk.esc(cert.category)}</strong> training category in full, using calm, positive, reward-based methods.`;
 
   const overlay = document.createElement("div");
   overlay.id = "certificateOverlay";
@@ -4080,12 +4175,18 @@ function openCertificate(){
     </div>
     <div class="certificate-page">
       <div class="certificate-inner">
-        <img src="images/certificate-medal.png" alt="" style="width:80px; height:80px; object-fit:contain;">
-        <div class="certificate-title">Certificate of Achievement</div>
-        <div class="certificate-sub">Reward-Based Training</div>
-        <div class="certificate-dogname">${sk.esc(dog.name)}</div>
-        <div class="certificate-body">
-          has successfully completed <strong>${lessonsCompleted} training lessons</strong>${topCategories.length ? `, building skills in ${topCategories.map(c=>sk.esc(c)).join(", ")}` : ""}, using calm, positive, reward-based methods.
+        <img src="images/logo-lockup-light.png" alt="Sidekick" class="certificate-logo">
+        <img src="images/holo-icon.png" alt="" class="certificate-holo">
+        <img src="images/certificate-medal.png" alt="" style="width:74px; height:74px; object-fit:contain; position:relative;">
+        <div class="certificate-title" style="position:relative;">Certificate of Achievement</div>
+        <div class="certificate-sub" style="position:relative;">${cert.type==="general"?"Reward-Based Training":cert.type==="games"?"Play &amp; Enrichment":sk.esc(cert.category)}</div>
+        <div class="certificate-dogname" style="position:relative;">${sk.esc(dog.name)}</div>
+        <div class="certificate-body" style="position:relative;">${bodyText}</div>
+        <div class="certificate-signoff">
+          <img src="images/certificate-signature.png" alt="Duffers" class="certificate-sig-img"
+               onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="certificate-sig-text" style="display:none;">Duffers</div>
+          <div class="certificate-sig-line">Awarded by</div>
         </div>
         <div class="certificate-footer">
           <div>Generated ${generatedDate}</div>
