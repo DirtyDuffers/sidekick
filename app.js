@@ -81,6 +81,7 @@ let currentDogId = null;
 let lessonFilter = { category:"All", query:"", difficulty:"All" };
 let activeSession = null; // {lessonId, reps:[], startedAt}
 let activeProgramme = null; // {programmeId, lessons:[], index, blockResults:[]}
+let activeWalk = null; // {dogId, startedAt, watchId, lastPos, distanceKm, gpsAvailable}
 
 /* ---------------- Storage ---------------- */
 function loadDB(){
@@ -91,10 +92,11 @@ function loadDB(){
       if(!parsed.favourites) parsed.favourites = []; // added after initial release — default for existing saves
       if(!parsed.lessonNotes) parsed.lessonNotes = {}; // added after initial release — default for existing saves
       if(!parsed.weightLogs) parsed.weightLogs = []; // added after initial release — default for existing saves
+      if(!parsed.walks) parsed.walks = []; // added after initial release — default for existing saves
       return parsed;
     }
   }catch(e){ console.error("Sidekick: failed to parse local data, starting fresh.", e); }
-  return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{}, favourites:[], lessonNotes:{}, weightLogs:[] };
+  return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{}, favourites:[], lessonNotes:{}, weightLogs:[], walks:[] };
 }
 function getWeightLogs(dogId){
   return DB.weightLogs.filter(w=>w.dogId===dogId).sort((a,b)=>new Date(a.date)-new Date(b.date));
@@ -106,6 +108,31 @@ function addWeightEntry(dogId, date, weight, unit){
 function deleteWeightEntry(id){
   DB.weightLogs = DB.weightLogs.filter(w=>w.id!==id);
   saveDB();
+}
+function getWalks(dogId){
+  return DB.walks.filter(w=>w.dogId===dogId).sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+// distanceKm and source ("live" | "manual") are optional -- a walk logged
+// purely for duration (no GPS, or GPS unavailable/denied) is still a
+// complete, valid entry.
+function addWalk(dogId, date, durationSeconds, distanceKm, source){
+  DB.walks.push({ id: uid(), dogId, date, durationSeconds: Math.round(durationSeconds), distanceKm: distanceKm!=null ? Number(distanceKm.toFixed(2)) : null, source: source||"manual" });
+  saveDB();
+}
+function deleteWalk(id){
+  DB.walks = DB.walks.filter(w=>w.id!==id);
+  saveDB();
+}
+// Haversine formula -- straight-line distance between two lat/lng points in
+// km. Summed across consecutive GPS readings during a live walk, this
+// approximates the walked path length (it will always slightly undercount
+// a winding route, same as any GPS-based tracker).
+function haversineKm(lat1, lon1, lat2, lon2){
+  const R = 6371;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLon = (lon2-lon1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 function applyTheme(theme){
   document.body.dataset.theme = theme; // "light" | "dark" | "auto" — CSS handles all three
@@ -535,6 +562,7 @@ window.__sk = {
   get lessonFilter(){return lessonFilter;},
   get activeSession(){return activeSession;}, setActiveSession(v){activeSession=v;},
   get activeProgramme(){return activeProgramme;}, setActiveProgramme(v){activeProgramme=v;},
+  get activeWalk(){return activeWalk;}, setActiveWalk(v){activeWalk=v;},
   CATEGORY_COLOR_VARS, CATEGORY_ICON, SKILL_STATES, STATE_COLOR, ADAPTIVE_FEEDBACK, FEEDBACK_DISPLAY,
   AVATAR_COLORS, DOG_EMOJI, AGE_STAGES, GENDERS, GAMES_LIST, CERTIFICATE_CATEGORIES,
   splitPipe, splitSemi, getCategoryVar, getCategoryIcon,
@@ -545,6 +573,7 @@ window.__sk = {
   getAvailableVoices, getSelectedVoiceURI, setSelectedVoiceURI,
   getQuietHours, setQuietHours,
   getWeightLogs, addWeightEntry, deleteWeightEntry,
+  getWalks, addWalk, deleteWalk, haversineKm,
   isSilentModeBypassEnabled, setSilentModeBypassEnabled,
   goScreen, render, SCREEN_RENDERERS, saveDB, loadKnowledgeBase, loadDB, setTabbarVisible
 };
@@ -1188,6 +1217,7 @@ function renderHome(container){
       <button class="row" id="quickBrowse"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;"><path d="M4 5.5c0-.6.4-1 1-1h5.5a2 2 0 0 1 2 2v13a1.5 1.5 0 0 0-1.5-1.5H4z"/><path d="M20 5.5c0-.6-.4-1-1-1h-5.5a2 2 0 0 0-2 2v13a1.5 1.5 0 0 1 1.5-1.5H20z"/></svg>Browse all lessons</div><div class="row-meta">${sk.KB.collections.lessons.length} lessons in the library</div></div><span class="row-chev">›</span></button>
       <button class="row" id="quickClicker"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">🔨 Clicker</div><div class="row-meta">A tap-to-click sound, ready anytime</div></div><span class="row-chev">›</span></button>
       <button class="row" id="quickGames"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title">🎮 Games</div><div class="row-meta">Fun ways to play, bond, and enrich</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="quickWalks"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">🚶 Walks</div><div class="row-meta">Track a walk's time and distance</div></div><span class="row-chev">›</span></button>
     </div>
 
     <div class="section-label" role="heading" aria-level="2">${sk.esc(dog.name)}'s progress <a href="#" id="seeProgress" style="font-size:11px;text-transform:none;letter-spacing:0;font-weight:600;color:var(--forest);">View all →</a></div>
@@ -1225,6 +1255,7 @@ function renderHome(container){
   container.querySelector("#quickBrowse").addEventListener("click", ()=>sk.goScreen("lessons"));
   container.querySelector("#quickClicker").addEventListener("click", openClickerModal);
   container.querySelector("#quickGames").addEventListener("click", openGamesModal);
+  container.querySelector("#quickWalks").addEventListener("click", openWalkTracker);
   container.querySelector("#seeProgress").addEventListener("click", (e)=>{ e.preventDefault(); sk.goScreen("progress"); });
 }
 
@@ -1363,6 +1394,160 @@ function weightChartSVG(entries, unit){
 
 // The dog's weight log -- a simple add-entry form, a chart, and a
 // deletable list, all scoped to whichever dog is currently active.
+// Duration always works (a plain timer); distance is best-effort GPS layered
+// on top, since continuous background geolocation is not reliably supported
+// on mobile browsers once the screen locks or the tab loses focus. If GPS
+// is denied, unavailable, or never gets a fix, the walk still saves fine
+// with duration alone. A manual-entry path covers everything else --
+// forgetting to start tracking, a phone left at home, or logging a walk
+// after the fact.
+function openWalkTracker(){
+  const dog = sk.getCurrentDog();
+  if(!dog){ sk.showToast("Add a dog first."); return; }
+  let renderTimer = null;
+
+  function fmtDuration(totalSeconds){
+    const m = Math.floor(totalSeconds/60), s = Math.floor(totalSeconds%60);
+    return `${m}:${String(s).padStart(2,"0")}`;
+  }
+
+  function render(){
+    const walks = sk.getWalks(dog.id);
+    const totalWalks = walks.length;
+    const totalMinutes = Math.round(walks.reduce((sum,w)=>sum+w.durationSeconds,0)/60);
+    const totalKm = walks.reduce((sum,w)=>sum+(w.distanceKm||0),0);
+    const walk = sk.activeWalk && sk.activeWalk.dogId===dog.id ? sk.activeWalk : null;
+
+    sk.openModal(`
+      <h3>${sk.esc(dog.name)}'s walks</h3>
+      ${walk ? `
+        <div class="card" style="text-align:center;">
+          <div style="font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft);">Walk in progress</div>
+          <div id="walkTimer" style="font-size:44px; font-weight:700; font-family:var(--font-display); margin:6px 0;">0:00</div>
+          <div style="font-size:13px; color:var(--ink-soft); margin-bottom:16px;" id="walkDistance">
+            ${walk.gpsFixObtained ? walk.distanceKm.toFixed(2)+" km" : (walk.gpsDenied ? "Distance unavailable — location access wasn't granted" : "Finding GPS signal…")}
+          </div>
+          <button class="btn btn-primary btn-block" id="finishWalkBtn">⏹ Finish walk</button>
+          <p style="font-size:11.5px; color:var(--ink-soft); margin-top:10px;">Keep Sidekick open for the most accurate distance — tracking may pause if your screen locks.</p>
+        </div>
+      ` : `
+        <div class="card" style="text-align:center;">
+          <button class="btn btn-primary btn-block" id="startWalkBtn">▶ Start walk</button>
+          <button class="btn btn-ghost btn-block" id="manualWalkBtn" style="margin-top:8px;">Log a walk manually</button>
+        </div>
+      `}
+
+      ${totalWalks ? `
+      <div class="stat-grid" style="margin:14px 0;">
+        <div class="stat-box"><div class="num">${totalWalks}</div><div class="lbl">Walks logged</div></div>
+        <div class="stat-box"><div class="num">${totalMinutes}</div><div class="lbl">Total minutes</div></div>
+        <div class="stat-box"><div class="num">${totalKm.toFixed(1)}</div><div class="lbl">Total km</div></div>
+      </div>
+      <div class="section-label" role="heading" aria-level="2">History</div>
+      <div class="row-list">
+        ${walks.slice(0,20).map(w=>`
+          <div class="row" style="cursor:default;">
+            <div class="row-body">
+              <div class="row-title">${fmtDuration(w.durationSeconds)}${w.distanceKm!=null?` · ${w.distanceKm.toFixed(2)} km`:""}</div>
+              <div class="row-meta">${sk.fmtDate(w.date)}${w.source==="manual"?" · logged manually":""}</div>
+            </div>
+            <button type="button" class="icon-btn" data-delete-walk="${w.id}" aria-label="Delete this walk" style="width:32px; height:32px; font-size:14px;">🗑️</button>
+          </div>
+        `).join("")}
+      </div>` : `<p style="color:var(--ink-soft); font-size:13px; text-align:center;">No walks logged yet.</p>`}
+    `);
+
+    const startBtn = document.getElementById("startWalkBtn");
+    if(startBtn) startBtn.addEventListener("click", startWalk);
+    const manualBtn = document.getElementById("manualWalkBtn");
+    if(manualBtn) manualBtn.addEventListener("click", openManualWalkForm);
+    const finishBtn = document.getElementById("finishWalkBtn");
+    if(finishBtn) finishBtn.addEventListener("click", finishWalk);
+    document.querySelectorAll("[data-delete-walk]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{ sk.deleteWalk(btn.dataset.deleteWalk); render(); });
+    });
+
+    // Keeps the on-screen timer live while this modal is open. Checks for
+    // its own DOM target each tick and stops itself once that's gone,
+    // rather than relying on a separate "modal closed" event to clean up.
+    clearInterval(renderTimer);
+    if(walk){
+      renderTimer = setInterval(()=>{
+        const el = document.getElementById("walkTimer");
+        if(!el || !sk.activeWalk){ clearInterval(renderTimer); return; }
+        const elapsed = (Date.now() - sk.activeWalk.startedAt) / 1000;
+        el.textContent = fmtDuration(elapsed);
+        const distEl = document.getElementById("walkDistance");
+        if(distEl){
+          if(sk.activeWalk.gpsFixObtained) distEl.textContent = sk.activeWalk.distanceKm.toFixed(2) + " km";
+          else if(sk.activeWalk.gpsDenied) distEl.textContent = "Distance unavailable — location access wasn't granted";
+        }
+      }, 1000);
+    }
+  }
+
+  function startWalk(){
+    const walk = { dogId: dog.id, startedAt: Date.now(), watchId: null, lastPos: null, distanceKm: 0, gpsFixObtained: false, gpsDenied: false };
+    sk.setActiveWalk(walk);
+    if("geolocation" in navigator){
+      walk.watchId = navigator.geolocation.watchPosition(
+        pos=>{
+          // Skip low-confidence fixes (accuracy is a radius in metres) --
+          // including them would make the distance jump around erratically.
+          if(pos.coords.accuracy > 50) return;
+          const {latitude, longitude} = pos.coords;
+          if(walk.lastPos){
+            walk.distanceKm += sk.haversineKm(walk.lastPos.lat, walk.lastPos.lng, latitude, longitude);
+          }
+          walk.lastPos = {lat: latitude, lng: longitude};
+          walk.gpsFixObtained = true;
+        },
+        ()=>{ walk.gpsDenied = true; }, // denied or unavailable — duration-only tracking continues regardless
+        { enableHighAccuracy:true, maximumAge:5000 }
+      );
+    }else{
+      walk.gpsDenied = true;
+    }
+    render();
+  }
+
+  function finishWalk(){
+    const walk = sk.activeWalk;
+    if(!walk) return;
+    if(walk.watchId!=null && "geolocation" in navigator) navigator.geolocation.clearWatch(walk.watchId);
+    const durationSeconds = (Date.now() - walk.startedAt) / 1000;
+    sk.addWalk(dog.id, new Date().toISOString(), durationSeconds, walk.gpsFixObtained ? walk.distanceKm : null, "live");
+    sk.setActiveWalk(null);
+    render();
+  }
+
+  function openManualWalkForm(){
+    sk.openModal(`
+      <h3>Log a walk</h3>
+      <form id="manualWalkForm">
+        <label for="mw_date">Date</label>
+        <input type="date" id="mw_date" value="${new Date().toISOString().slice(0,10)}" max="${new Date().toISOString().slice(0,10)}" required>
+        <label for="mw_minutes">Duration (minutes)</label>
+        <input type="number" id="mw_minutes" min="1" step="1" placeholder="e.g. 20" required>
+        <label for="mw_km">Distance in km <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+        <input type="number" id="mw_km" min="0" step="0.1" placeholder="e.g. 1.5">
+        <button type="submit" class="btn btn-primary btn-block">Save walk</button>
+      </form>
+    `);
+    document.getElementById("manualWalkForm").addEventListener("submit", e=>{
+      e.preventDefault();
+      const date = document.getElementById("mw_date").value;
+      const minutes = Number(document.getElementById("mw_minutes").value);
+      const km = document.getElementById("mw_km").value;
+      if(!date || !minutes) return;
+      sk.addWalk(dog.id, date, minutes*60, km ? Number(km) : null, "manual");
+      render();
+    });
+  }
+
+  render();
+}
+
 function openWeightTracker(){
   const dog = sk.getCurrentDog();
   if(!dog){ sk.showToast("Add a dog first."); return; }
@@ -3435,9 +3620,14 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "7.1.0";
+const APP_VERSION = "7.2.0";
 
 const CHANGELOG = [
+  { version: "7.2.0", notes: [
+    "New: Walks (Home → 🚶 Walks) — duration always tracks reliably via a plain timer; distance is a best-effort GPS layer on top, verified accurate against a known coordinate distance in testing. Being upfront in the UI: continuous background GPS isn't reliably supported once your screen locks, so accuracy is best while Sidekick stays open",
+    "A manual-entry option covers everything else — forgetting to start tracking, leaving your phone at home, or logging a past walk",
+    "Fixed a real bug caught in testing: if location access was denied, the screen stayed stuck on \"Finding GPS signal…\" forever instead of correctly switching to a \"distance unavailable\" message, even though duration tracking was working correctly underneath the whole time",
+  ]},
   { version: "7.1.0", notes: [
     "Certificate visuals corrected per feedback: the holographic icon is now a fully-visible image in the bottom-right corner rather than a faded watermark, and the new decorative background (with its own subtle S mark and line art) fills the whole certificate instead",
     "The \"Duffers\" signature now tries an image first (for a genuine hand-drawn look once one's provided), falling back cleanly to styled text if the image isn't there yet — no broken-image icon either way",
