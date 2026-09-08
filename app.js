@@ -3690,9 +3690,14 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "8.4.0";
+const APP_VERSION = "8.5.0";
 
 const CHANGELOG = [
+  { version: "8.5.0", notes: [
+    "Fixed the download genuinely being able to hang forever: neither the CDN script loading nor the overall generation process had any timeout, so a stalled connection (packets silently dropped, not an active failure) left no way for the code to ever notice and recover. Both now have hard time limits — a hung connection now reliably falls back to a clear message within seconds instead of leaving the button stuck on \"Generating…\" indefinitely",
+    "Portrait certificates now download as a real .png image rather than a PDF, since it's meant to be shared as a photo, not printed. Landscape stays a .pdf, aimed at printing and storage. The Download button's label changes to match whichever it'll actually produce",
+    "The background watermark opacity was raised substantially (roughly 4x) since the previous subtle level wasn't reliably visible. If it's still not showing after this, that would point to the image file itself not being present on the deployed site rather than an opacity or code issue this app can fix from here",
+  ]},
   { version: "8.4.0", notes: [
     "Found the likely root cause connecting all three certificate bugs at once: the previous fix used a modern CSS feature (container query units) to make the certificate scale correctly at any size, but html2canvas — the library the one-click PDF download depends on — doesn't reliably support it. That's consistent with the background not rendering in captures and the download hanging indefinitely on \"Generating…\"",
     "Rebuilt the scaling approach using a fixed-size design visually scaled with a plain CSS transform instead — a much older, universally-supported technique with none of that risk. For PDF/print, the transform is temporarily removed so the capture happens at full, unscaled resolution, then restored afterward either way, even if generation fails",
@@ -4565,7 +4570,7 @@ function openCertificateView(dog, cert, format){
       </div>
       <div class="print-toolbar-row">
         <button class="btn btn-primary" id="certGo">🖨️ Print</button>
-        <button class="btn btn-secondary" id="certDownload">⬇️ Download PDF</button>
+        <button class="btn btn-secondary" id="certDownload">⬇️ ${format==="portrait"?"Download Image":"Download PDF"}</button>
       </div>
     </div>
     ${format==="portrait" ? portraitHTML : landscapeHTML}
@@ -4587,14 +4592,22 @@ function openCertificateView(dog, cert, format){
 
 // Loads a script from a CDN on demand and caches the promise, so repeated
 // calls (e.g. clicking Download PDF twice) don't re-fetch or re-inject it.
+// A hung connection (packets silently dropped, not an active failure) never
+// fires onload or onerror at all -- without an explicit timeout here, that
+// leaves the whole download stuck on "Generating..." forever with no way
+// out, which is exactly what was being reported.
 const _scriptLoadPromises = {};
-function loadScriptOnce(url){
+function loadScriptOnce(url, timeoutMs){
   if(_scriptLoadPromises[url]) return _scriptLoadPromises[url];
   _scriptLoadPromises[url] = new Promise((resolve, reject)=>{
+    const timer = setTimeout(()=>{
+      delete _scriptLoadPromises[url];
+      reject(new Error("Timed out loading "+url));
+    }, timeoutMs || 10000);
     const s = document.createElement("script");
     s.src = url;
-    s.onload = resolve;
-    s.onerror = ()=>{ delete _scriptLoadPromises[url]; reject(new Error("Failed to load "+url)); };
+    s.onload = ()=>{ clearTimeout(timer); resolve(); };
+    s.onerror = ()=>{ clearTimeout(timer); delete _scriptLoadPromises[url]; reject(new Error("Failed to load "+url)); };
     document.head.appendChild(s);
   });
   return _scriptLoadPromises[url];
@@ -4622,51 +4635,80 @@ async function downloadCertificatePDF(dog, overlay){
   // resolution render, then restore the on-screen scale afterward either way.
   const prevOuterWidth = outer.style.width, prevOuterHeight = outer.style.height, prevOuterAspect = outer.style.aspectRatio;
   const prevTransform = inner.style.transform;
+
+  // A hard ceiling on the whole operation, independent of where it's stuck --
+  // this is what actually guarantees the button can never again be left
+  // showing "Generating..." forever, regardless of which specific step (a
+  // hung CDN connection, a slow canvas render, anything else) is the cause
+  // on a given device or network.
+  const withTimeout = (promise, ms)=>Promise.race([
+    promise,
+    new Promise((_, reject)=>setTimeout(()=>reject(new Error("Timed out")), ms)),
+  ]);
+
   try{
-    await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
-    await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-    outer.style.aspectRatio = "auto";
-    outer.style.width = designWidth + "px";
-    outer.style.height = designHeight + "px";
-    inner.style.transform = "none";
-    const target = outer;
-    // html2canvas snapshots whatever is in the DOM the instant it's called --
-    // if a larger image (the background watermark) hasn't actually finished
-    // loading yet, it captures a blank gap where that image belongs rather
-    // than waiting or erroring. Explicitly waiting for every image in the
-    // certificate to finish first is what a real download (uncached, real
-    // network) needs that a quick on-screen preview usually doesn't expose.
-    const images = Array.from(target.querySelectorAll("img"));
-    await Promise.all(images.map(img=>{
-      if(img.complete && img.naturalWidth > 0) return Promise.resolve();
-      return new Promise(resolve=>{
-        img.addEventListener("load", resolve, {once:true});
-        img.addEventListener("error", resolve, {once:true}); // don't let one broken image block the rest
-      });
-    }));
-    const renderScale = 2; // matches html2canvas's scale option below
-    const canvas = await window.html2canvas(target, { scale:renderScale, useCORS:true, backgroundColor:"#ffffff" });
-    const imgData = canvas.toDataURL("image/jpeg", 0.95);
-    const { jsPDF } = window.jspdf;
-    // jsPDF's "px" unit assumes 96 DPI (1px = 1/96 inch) -- the canvas itself
-    // is rendered at 2x that for print sharpness, so using its raw pixel
-    // dimensions as the PAGE size would make the page twice the intended
-    // size in each direction. That's exactly what was cutting downloads off:
-    // most PDF viewers open an oversized page at their default zoom rather
-    // than fitting it to the window, so only the top-left quarter was ever
-    // visible without the viewer's own zoom-to-fit. Dividing back out gives
-    // a page sized to the certificate's real dimensions, while the image
-    // embedded in it is still the full 2x-resolution capture for a sharp print.
-    const pageWidth = canvas.width / renderScale;
-    const pageHeight = canvas.height / renderScale;
-    const orientation = pageWidth >= pageHeight ? "landscape" : "portrait";
-    const pdf = new jsPDF({ orientation, unit:"px", format:[pageWidth, pageHeight] });
-    pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
-    const safeName = (dog.name||"dog").replace(/[^a-z0-9]+/gi,"-").toLowerCase();
-    pdf.save(`sidekick-certificate-${safeName}.pdf`);
+    await withTimeout((async()=>{
+      await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+      outer.style.aspectRatio = "auto";
+      outer.style.width = designWidth + "px";
+      outer.style.height = designHeight + "px";
+      inner.style.transform = "none";
+      const target = outer;
+      // html2canvas snapshots whatever is in the DOM the instant it's called --
+      // if a larger image (the background watermark) hasn't actually finished
+      // loading yet, it captures a blank gap where that image belongs rather
+      // than waiting or erroring. Explicitly waiting for every image in the
+      // certificate to finish first is what a real download (uncached, real
+      // network) needs that a quick on-screen preview usually doesn't expose.
+      const images = Array.from(target.querySelectorAll("img"));
+      await Promise.all(images.map(img=>{
+        if(img.complete && img.naturalWidth > 0) return Promise.resolve();
+        return new Promise(resolve=>{
+          img.addEventListener("load", resolve, {once:true});
+          img.addEventListener("error", resolve, {once:true}); // don't let one broken image block the rest
+        });
+      }));
+      const renderScale = 2;
+      const canvas = await window.html2canvas(target, { scale:renderScale, useCORS:true, backgroundColor:"#ffffff" });
+      const safeName = (dog.name||"dog").replace(/[^a-z0-9]+/gi,"-").toLowerCase();
+
+      if(isPortrait){
+        // The portrait certificate is designed to be shared as an image (a
+        // phone screenshot stand-in), not a document to print -- a direct
+        // .png download suits that better than wrapping it in a PDF.
+        const blob = await new Promise(resolve=>canvas.toBlob(resolve, "image/png"));
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `sidekick-certificate-${safeName}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }else{
+        await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+        const imgData = canvas.toDataURL("image/jpeg", 0.95);
+        const { jsPDF } = window.jspdf;
+        // jsPDF's "px" unit assumes 96 DPI (1px = 1/96 inch) -- the canvas
+        // itself is rendered at 2x that for print sharpness, so using its
+        // raw pixel dimensions as the PAGE size would make the page twice
+        // the intended size in each direction. That was cutting downloads
+        // off, since most PDF viewers open an oversized page at their
+        // default zoom rather than fitting it to the window. Dividing back
+        // out gives a page sized to the certificate's real dimensions,
+        // while the embedded image is still the full 2x-resolution capture.
+        const pageWidth = canvas.width / renderScale;
+        const pageHeight = canvas.height / renderScale;
+        const pdf = new jsPDF({ orientation:"landscape", unit:"px", format:[pageWidth, pageHeight] });
+        pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
+        pdf.save(`sidekick-certificate-${safeName}.pdf`);
+      }
+    })(), 20000);
   }catch(e){
-    sk.showToast("Couldn't generate the PDF directly — opening print instead.");
-    window.print();
+    sk.showToast(isPortrait
+      ? "Couldn't generate the image directly — try a screenshot instead."
+      : "Couldn't generate the PDF directly — opening print instead.");
+    if(!isPortrait) window.print();
   }finally{
     outer.style.width = prevOuterWidth;
     outer.style.height = prevOuterHeight;
