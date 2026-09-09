@@ -2171,6 +2171,7 @@ function openTrainingJourney(dog){
   ).filter(([,v])=>v.total>=4 && v.done>0).sort((a,b)=>(b[1].done/b[1].total)-(a[1].done/a[1].total));
 
   sk.openModal(`
+    <img src="images/hero-training-journey.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;" onerror="this.style.display='none';">
     <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:6px;">
       ${sk.dogAvatarHTML(dog, "lg")}
       <h3 style="margin:10px 0 0;">${sk.esc(dog.name)}'s journey</h3>
@@ -4207,9 +4208,12 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "9.2.0";
+const APP_VERSION = "9.3.0";
 
 const CHANGELOG = [
+  { version: "9.3.0", notes: [
+    "Added the Training Journey hero image — the last of the two lower-priority images identified in the final audit. Every screen that fits the browsing/landing pattern now has one",
+  ]},
   { version: "9.2.0", notes: [
     "New: printable vet visit summary (Health screen → 🖨️ Print vet visit summary) — combines current medications, vaccination history, and vet visit history into one document, so there's no need to describe everything from memory in the waiting room",
     "Fixed a real clarity bug caught while reviewing the output, not just checking it rendered: dates throughout the app deliberately omit the year for compact display, which is exactly wrong for a printed medical record — a vaccination given last year and due again this year both showed as the same date. This document now always shows the full year",
