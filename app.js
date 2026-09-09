@@ -95,10 +95,11 @@ function loadDB(){
       if(!parsed.walks) parsed.walks = []; // added after initial release — default for existing saves
       if(!parsed.totalClicks) parsed.totalClicks = 0; // added after initial release — default for existing saves
       if(!parsed.hiddenAchievements) parsed.hiddenAchievements = []; // added after initial release — default for existing saves
+      if(!parsed.medications) parsed.medications = []; // added after initial release — default for existing saves
       return parsed;
     }
   }catch(e){ console.error("Sidekick: failed to parse local data, starting fresh.", e); }
-  return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{}, favourites:[], lessonNotes:{}, weightLogs:[], walks:[], totalClicks:0, hiddenAchievements:[] };
+  return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{}, favourites:[], lessonNotes:{}, weightLogs:[], walks:[], totalClicks:0, hiddenAchievements:[], medications:[] };
 }
 function getWeightLogs(dogId){
   return DB.weightLogs.filter(w=>w.dogId===dogId).sort((a,b)=>new Date(a.date)-new Date(b.date));
@@ -124,6 +125,22 @@ function addWalk(dogId, date, durationSeconds, distanceKm, source){
 }
 function deleteWalk(id){
   DB.walks = DB.walks.filter(w=>w.id!==id);
+  saveDB();
+}
+function getMedications(dogId){
+  return DB.medications.filter(m=>m.dogId===dogId).sort((a,b)=>new Date(b.startDate)-new Date(a.startDate));
+}
+// times is an array of "HH:MM" strings, one per dose per day (e.g. ["08:00"]
+// for once daily, ["08:00","20:00"] for twice) -- endDate is optional, null
+// meaning an ongoing/no-fixed-end course.
+function addMedication(dogId, name, dose, times, startDate, endDate, notes){
+  const med = { id: uid(), dogId, name, dose: dose||"", times, startDate, endDate: endDate||null, notes: notes||"" };
+  DB.medications.push(med);
+  saveDB();
+  return med;
+}
+function deleteMedication(id){
+  DB.medications = DB.medications.filter(m=>m.id!==id);
   saveDB();
 }
 // Haversine formula -- straight-line distance between two lat/lng points in
@@ -582,6 +599,7 @@ window.__sk = {
   getQuietHours, setQuietHours,
   getWeightLogs, addWeightEntry, deleteWeightEntry,
   getWalks, addWalk, deleteWalk, haversineKm,
+  getMedications, addMedication, deleteMedication,
   isSilentModeBypassEnabled, setSilentModeBypassEnabled,
   goScreen, render, SCREEN_RENDERERS, saveDB, loadKnowledgeBase, loadDB, setTabbarVisible
 };
@@ -1607,6 +1625,155 @@ function openWalkTracker(){
   render();
 }
 
+// Builds a real .ics calendar file for a medication schedule -- one
+// recurring daily VEVENT per dose time. Uses "floating" local time (no
+// timezone/UTC marker) deliberately: a daily medication reminder should
+// always mean "this time, wherever I am", not drift if the calendar app's
+// timezone differs from where it's opened. Pure string generation, no
+// library needed -- the iCalendar format is plain text.
+function icsPad(n){ return String(n).padStart(2,"0"); }
+function icsEscapeText(str){
+  return String(str).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");
+}
+function icsFloatingDateTime(dateStr, timeStr){
+  const [h,m] = timeStr.split(":");
+  return dateStr.replace(/-/g,"") + "T" + icsPad(h) + icsPad(m) + "00";
+}
+function generateMedicationICS(dog, med){
+  const now = new Date();
+  const dtstamp = now.toISOString().replace(/[-:]/g,"").split(".")[0] + "Z";
+  let events = "";
+  med.times.forEach(time=>{
+    const dtstart = icsFloatingDateTime(med.startDate, time);
+    const [h,m] = time.split(":").map(Number);
+    const endTotalMin = h*60 + m + 15; // a 15-minute reminder block
+    const endTime = `${icsPad(Math.floor(endTotalMin/60)%24)}:${icsPad(endTotalMin%60)}`;
+    const dtend = icsFloatingDateTime(med.startDate, endTime);
+    let rrule = "RRULE:FREQ=DAILY";
+    if(med.endDate) rrule += ";UNTIL=" + icsFloatingDateTime(med.endDate, time);
+    const summary = icsEscapeText(`${dog.name}'s medication: ${med.name}`);
+    const descParts = [`Dose: ${med.dose||"—"}`];
+    if(med.notes) descParts.push(med.notes);
+    const description = icsEscapeText(descParts.join(" — "));
+    events += `BEGIN:VEVENT\r\nUID:${sk.uid()}@sidekick\r\nDTSTAMP:${dtstamp}\r\nDTSTART:${dtstart}\r\nDTEND:${dtend}\r\n${rrule}\r\nSUMMARY:${summary}\r\nDESCRIPTION:${description}\r\nEND:VEVENT\r\n`;
+  });
+  return `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sidekick//Medication Reminder//EN\r\nCALSCALE:GREGORIAN\r\n${events}END:VCALENDAR\r\n`;
+}
+function downloadTextFile(filename, content, mimeType){
+  const blob = new Blob([content], {type: mimeType+";charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function openMedicationTracker(){
+  const dog = sk.getCurrentDog();
+  if(!dog){ sk.showToast("Add a dog first."); return; }
+  let timesPerDay = 1;
+
+  function fmtTimes(times){ return times.join(", "); }
+  function fmtDateRange(m){
+    const start = sk.fmtDate(m.startDate);
+    return m.endDate ? `${start} – ${sk.fmtDate(m.endDate)}` : `${start} – ongoing`;
+  }
+
+  function render(){
+    const meds = sk.getMedications(dog.id);
+    sk.openModal(`
+      <h3>${sk.esc(dog.name)}'s medication</h3>
+      <div class="section-label" role="heading" aria-level="2">Add a medication</div>
+      <div class="card">
+        <form id="medForm">
+          <label for="med_name">Name</label>
+          <input type="text" id="med_name" placeholder="e.g. Metacam" required>
+          <label for="med_dose">Dose</label>
+          <input type="text" id="med_dose" placeholder="e.g. 1.5ml or 10mg">
+          <label for="med_times_label">Times per day</label>
+          <div class="chip-group" id="med_freq">
+            <button type="button" class="chip selected" data-val="1">Once</button>
+            <button type="button" class="chip" data-val="2">Twice</button>
+            <button type="button" class="chip" data-val="3">Three times</button>
+          </div>
+          <div id="med_time_inputs"></div>
+          <label for="med_start">Start date</label>
+          <input type="date" id="med_start" value="${new Date().toISOString().slice(0,10)}" required>
+          <label for="med_end">End date <span style="font-weight:400;color:var(--ink-soft)">(optional — leave blank if ongoing)</span></label>
+          <input type="date" id="med_end">
+          <label for="med_notes">Notes <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+          <input type="text" id="med_notes" placeholder="e.g. give with food">
+          <button type="submit" class="btn btn-primary btn-block">Save medication</button>
+        </form>
+      </div>
+
+      ${meds.length ? `<div class="section-label" role="heading" aria-level="2">Current & past</div>
+      <div class="row-list">
+        ${meds.map(m=>`
+          <div class="row" style="cursor:default;">
+            <div class="row-tab" style="background:var(--ochre)"></div>
+            <div class="row-body">
+              <div class="row-title">${sk.esc(m.name)}${m.dose?` · ${sk.esc(m.dose)}`:""}</div>
+              <div class="row-meta">${fmtTimes(m.times)} · ${fmtDateRange(m)}${m.notes?` · ${sk.esc(m.notes)}`:""}</div>
+            </div>
+            <button type="button" class="icon-btn" data-ics="${m.id}" aria-label="Download calendar reminder" style="width:32px; height:32px; font-size:15px;">📅</button>
+            <button type="button" class="icon-btn" data-delete-med="${m.id}" aria-label="Delete this medication" style="width:32px; height:32px; font-size:14px;">🗑️</button>
+          </div>
+        `).join("")}
+      </div>` : `<p style="color:var(--ink-soft); font-size:13px; text-align:center;">No medications logged yet.</p>`}
+    `);
+
+    function renderTimeInputs(){
+      const wrap = document.getElementById("med_time_inputs");
+      const defaultTimes = ["08:00","14:00","20:00"]; // sensible spread across the day for 1/2/3 doses
+      wrap.innerHTML = Array.from({length:timesPerDay}).map((_,i)=>`
+        <label for="med_time_${i}">${timesPerDay>1?`Dose ${i+1} time`:"Time"}</label>
+        <input type="time" id="med_time_${i}" value="${timesPerDay===2 ? ["08:00","20:00"][i] : defaultTimes[i]}" required>
+      `).join("");
+    }
+    renderTimeInputs();
+
+    document.getElementById("med_freq").addEventListener("click", e=>{
+      const b = e.target.closest(".chip"); if(!b) return;
+      document.querySelectorAll("#med_freq .chip").forEach(c=>c.classList.remove("selected"));
+      b.classList.add("selected");
+      timesPerDay = Number(b.dataset.val);
+      renderTimeInputs();
+    });
+
+    document.getElementById("medForm").addEventListener("submit", e=>{
+      e.preventDefault();
+      const name = document.getElementById("med_name").value.trim();
+      const dose = document.getElementById("med_dose").value.trim();
+      const start = document.getElementById("med_start").value;
+      const end = document.getElementById("med_end").value;
+      const notes = document.getElementById("med_notes").value.trim();
+      const times = Array.from({length:timesPerDay}).map((_,i)=>document.getElementById(`med_time_${i}`).value).filter(Boolean).sort();
+      if(!name || !start || times.length !== timesPerDay) return;
+      timesPerDay = 1; // reset the form's frequency selection for next time
+      sk.addMedication(dog.id, name, dose, times, start, end, notes);
+      render();
+    });
+
+    document.querySelectorAll("[data-delete-med]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{ sk.deleteMedication(btn.dataset.deleteMed); render(); });
+    });
+    document.querySelectorAll("[data-ics]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const med = meds.find(m=>m.id===btn.dataset.ics);
+        const ics = generateMedicationICS(dog, med);
+        const safeName = med.name.replace(/[^a-z0-9]+/gi,"-").toLowerCase();
+        downloadTextFile(`${safeName}-reminder.ics`, ics, "text/calendar");
+        sk.showToast("Calendar reminder downloaded — open it to add to your calendar.");
+      });
+    });
+  }
+  render();
+}
+
 function openWeightTracker(){
   const dog = sk.getCurrentDog();
   if(!dog){ sk.showToast("Add a dog first."); return; }
@@ -1744,6 +1911,7 @@ window.__sk.suggestedLesson = suggestedLesson;
 window.__sk.openClickerModal = openClickerModal;
 window.__sk.openGamesModal = openGamesModal;
 window.__sk.openWeightTracker = openWeightTracker;
+window.__sk.openMedicationTracker = openMedicationTracker;
 window.__sk.todaysSessionLessons = todaysSessionLessons;
 window.__sk.recentStruggleNote = recentStruggleNote;
 window.__sk.overallProgressPercent = overallProgressPercent;
@@ -2992,6 +3160,7 @@ function renderProfile(container){
       <button class="row" id="addDogRow"><div class="avatar" style="background:var(--line); color:var(--ink-soft);">+</div><div class="row-body"><div class="row-title">Add another dog</div></div></button>
       ${sk.DB.dogs.length > 1 ? `<button class="row" id="compareDogsRow"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">Compare dogs</div><div class="row-meta">Progress side by side</div></div><span class="row-chev">›</span></button>` : ""}
       <button class="row" id="trackWeightRow"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">⚖️ Track weight</div><div class="row-meta">Log and chart weight over time</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="medicationRow"><div class="row-tab" style="background:var(--red)"></div><div class="row-body"><div class="row-title">💊 Medication</div><div class="row-meta">Log doses & download calendar reminders</div></div><span class="row-chev">›</span></button>
     </div>
 
     <div class="section-label" role="heading" aria-level="2">${dog?sk.esc(dog.name)+"'s achievements":"Achievements"}</div>
@@ -3037,6 +3206,7 @@ function renderProfile(container){
   const compareBtn = container.querySelector("#compareDogsRow");
   if(compareBtn) compareBtn.addEventListener("click", openCompareDogs);
   container.querySelector("#trackWeightRow").addEventListener("click", ()=>sk.openWeightTracker());
+  container.querySelector("#medicationRow").addEventListener("click", ()=>sk.openMedicationTracker());
   container.querySelector("#reportBtn").addEventListener("click", openTrainingReport);
   container.querySelector("#certBtn").addEventListener("click", openCertificateList);
   container.querySelector("#printLogBtn").addEventListener("click", openPrintableLog);
@@ -3690,9 +3860,14 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "8.6.0";
+const APP_VERSION = "8.7.0";
 
 const CHANGELOG = [
+  { version: "8.7.0", notes: [
+    "New: Medication tracking (Profile → 💊 Medication) — log a medication's name, dose, frequency (once/twice/three times daily with individual times), start date, and an optional end date or leave it ongoing",
+    "Each medication can generate a real .ics calendar file — a genuine recurring daily reminder your phone's own calendar app handles natively, with one event per dose time and a correct end date if one was set. Built with plain text generation, no external library or CDN needed at all, unlike the certificate PDF feature",
+    "Fixed a real bug caught in testing before it shipped: the calendar file generator called a function using a shortcut that only exists in a different part of the file, which would have crashed silently on every single download attempt. Verified the fix by capturing an actual downloaded file and checking its raw bytes are valid, correctly-formatted calendar data — not just that a download happened",
+  ]},
   { version: "8.6.0", notes: [
     "Fixed the certificate visibly expanding beyond the screen while a download was generating — the previous fix temporarily resized the actual on-screen certificate to capture it at full resolution. It now captures an invisible, off-screen clone instead, so the certificate you're looking at is never touched or disrupted during generation",
     "The failure toast now shows the actual, specific error instead of a generic message — this feature has failed in more than one distinct way across several rounds, so knowing exactly which step failed is what turns the next report into an actual diagnosis rather than another guess",
