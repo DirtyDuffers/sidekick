@@ -96,10 +96,13 @@ function loadDB(){
       if(!parsed.totalClicks) parsed.totalClicks = 0; // added after initial release — default for existing saves
       if(!parsed.hiddenAchievements) parsed.hiddenAchievements = []; // added after initial release — default for existing saves
       if(!parsed.medications) parsed.medications = []; // added after initial release — default for existing saves
+      parsed.medications.forEach(m=>{ if(!m.frequencyType) m.frequencyType = "daily"; }); // added after initial release — default for existing entries
+      if(!parsed.vetVisits) parsed.vetVisits = []; // added after initial release — default for existing saves
+      if(!parsed.vaccinations) parsed.vaccinations = []; // added after initial release — default for existing saves
       return parsed;
     }
   }catch(e){ console.error("Sidekick: failed to parse local data, starting fresh.", e); }
-  return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{}, favourites:[], lessonNotes:{}, weightLogs:[], walks:[], totalClicks:0, hiddenAchievements:[], medications:[] };
+  return { dogs:[], activeDogId:null, sessions:[], skillStates:{}, lessonProgress:{}, settings:{}, favourites:[], lessonNotes:{}, weightLogs:[], walks:[], totalClicks:0, hiddenAchievements:[], medications:[], vetVisits:[], vaccinations:[] };
 }
 function getWeightLogs(dogId){
   return DB.weightLogs.filter(w=>w.dogId===dogId).sort((a,b)=>new Date(a.date)-new Date(b.date));
@@ -130,17 +133,45 @@ function deleteWalk(id){
 function getMedications(dogId){
   return DB.medications.filter(m=>m.dogId===dogId).sort((a,b)=>new Date(b.startDate)-new Date(a.startDate));
 }
-// times is an array of "HH:MM" strings, one per dose per day (e.g. ["08:00"]
-// for once daily, ["08:00","20:00"] for twice) -- endDate is optional, null
-// meaning an ongoing/no-fixed-end course.
-function addMedication(dogId, name, dose, times, startDate, endDate, notes){
-  const med = { id: uid(), dogId, name, dose: dose||"", times, startDate, endDate: endDate||null, notes: notes||"" };
+// times is an array of "HH:MM" strings -- for "daily" frequency, one entry
+// per dose per day (e.g. ["08:00"] once daily, ["08:00","20:00"] twice);
+// for "weekly"/"monthly" frequency, a single entry (the time of day the
+// dose recurs on the same weekday/date as startDate). endDate is optional,
+// null meaning an ongoing/no-fixed-end course.
+function addMedication(dogId, name, dose, frequencyType, times, startDate, endDate, notes){
+  const med = { id: uid(), dogId, name, dose: dose||"", frequencyType: frequencyType||"daily", times, startDate, endDate: endDate||null, notes: notes||"" };
   DB.medications.push(med);
   saveDB();
   return med;
 }
 function deleteMedication(id){
   DB.medications = DB.medications.filter(m=>m.id!==id);
+  saveDB();
+}
+function getVetVisits(dogId){
+  return DB.vetVisits.filter(v=>v.dogId===dogId).sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+function addVetVisit(dogId, date, time, reason, vetName, notes){
+  const visit = { id: uid(), dogId, date, time: time||"", reason, vetName: vetName||"", notes: notes||"" };
+  DB.vetVisits.push(visit);
+  saveDB();
+  return visit;
+}
+function deleteVetVisit(id){
+  DB.vetVisits = DB.vetVisits.filter(v=>v.id!==id);
+  saveDB();
+}
+function getVaccinations(dogId){
+  return DB.vaccinations.filter(v=>v.dogId===dogId).sort((a,b)=>new Date(b.dateGiven)-new Date(a.dateGiven));
+}
+function addVaccination(dogId, name, dateGiven, nextDueDate, notes){
+  const vac = { id: uid(), dogId, name, dateGiven, nextDueDate: nextDueDate||null, notes: notes||"" };
+  DB.vaccinations.push(vac);
+  saveDB();
+  return vac;
+}
+function deleteVaccination(id){
+  DB.vaccinations = DB.vaccinations.filter(v=>v.id!==id);
   saveDB();
 }
 // Haversine formula -- straight-line distance between two lat/lng points in
@@ -600,6 +631,8 @@ window.__sk = {
   getWeightLogs, addWeightEntry, deleteWeightEntry,
   getWalks, addWalk, deleteWalk, haversineKm,
   getMedications, addMedication, deleteMedication,
+  getVetVisits, addVetVisit, deleteVetVisit,
+  getVaccinations, addVaccination, deleteVaccination,
   isSilentModeBypassEnabled, setSilentModeBypassEnabled,
   goScreen, render, SCREEN_RENDERERS, saveDB, loadKnowledgeBase, loadDB, setTabbarVisible
 };
@@ -1228,6 +1261,37 @@ function checkHiddenAchievements(dogId){
   return newlyUnlocked;
 }
 
+// Checks medication, vet visits, and vaccinations for anything due today or
+// coming up within a week -- returns an empty array when there's nothing to
+// flag, which is the common case and means no card renders at all.
+function getTodaysHealthItems(dogId){
+  const items = [];
+  const todayStr = new Date().toISOString().slice(0,10);
+  const daysBetween = (a,b)=>Math.round((new Date(b+"T00:00:00") - new Date(a+"T00:00:00")) / 86400000);
+  const dueLabel = d => d===0 ? "Today" : d===1 ? "Tomorrow" : `In ${d} days`;
+
+  sk.getMedications(dogId).forEach(m=>{
+    if(m.startDate > todayStr) return; // hasn't started yet
+    if(m.endDate && m.endDate < todayStr) return; // course already finished
+    const sinceStart = daysBetween(m.startDate, todayStr);
+    let dueToday = false;
+    if(m.frequencyType === "weekly") dueToday = sinceStart % 7 === 0;
+    else if(m.frequencyType === "monthly") dueToday = new Date(todayStr+"T00:00:00").getDate() === new Date(m.startDate+"T00:00:00").getDate();
+    else dueToday = true; // daily
+    if(dueToday) items.push({emoji:"💊", label:m.name, detail:m.times.join(", ")});
+  });
+  sk.getVetVisits(dogId).forEach(v=>{
+    const d = daysBetween(todayStr, v.date);
+    if(d >= 0 && d <= 7) items.push({emoji:"🩺", label:v.reason, detail:dueLabel(d)});
+  });
+  sk.getVaccinations(dogId).forEach(v=>{
+    if(!v.nextDueDate) return;
+    const d = daysBetween(todayStr, v.nextDueDate);
+    if(d >= 0 && d <= 7) items.push({emoji:"💉", label:`${v.name} due`, detail:dueLabel(d)});
+  });
+  return items;
+}
+
 function renderHome(container){
   const dog = sk.getCurrentDog();
   if(!dog){ sk.goScreen("onboarding"); return; }
@@ -1239,6 +1303,7 @@ function renderHome(container){
   const streak = trainingStreak(dog.id);
   const overallPct = overallProgressPercent(dog.id);
   const developingCount = counts["Developing"]||0;
+  const todaysHealthItems = getTodaysHealthItems(dog.id);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const skillTotal = sk.KB.collections.skills.length;
@@ -1282,6 +1347,17 @@ function renderHome(container){
       <button class="btn btn-primary btn-block" style="margin-top:12px;" id="startTodaySession">Start today's session →</button>
       <button class="btn btn-ghost btn-block" style="margin-top:8px;" id="startQuickSession">⏱ Only have ${sessionLessons[0].session_length_min||5} minutes?</button>
     </div>
+
+    ${todaysHealthItems.length ? `
+    <div class="card" style="margin-top:12px;">
+      <div class="section-label" role="heading" aria-level="2" style="margin-top:0;">Today's health</div>
+      ${todaysHealthItems.map((item,i)=>`
+        <div style="display:flex; align-items:center; gap:10px; padding:7px 0; ${i>0?'border-top:1px solid var(--line);':''}">
+          <div style="font-size:18px; flex:none;">${item.emoji}</div>
+          <div style="flex:1; font-size:14px;">${sk.esc(item.label)}</div>
+          <div style="font-size:12px; color:var(--ink-soft);">${sk.esc(item.detail)}</div>
+        </div>`).join("")}
+    </div>` : ""}
 
     <div style="height:6px;"></div>
 
@@ -1642,6 +1718,7 @@ function icsFloatingDateTime(dateStr, timeStr){
 function generateMedicationICS(dog, med){
   const now = new Date();
   const dtstamp = now.toISOString().replace(/[-:]/g,"").split(".")[0] + "Z";
+  const icsFreq = {daily:"DAILY", weekly:"WEEKLY", monthly:"MONTHLY"}[med.frequencyType] || "DAILY";
   let events = "";
   med.times.forEach(time=>{
     const dtstart = icsFloatingDateTime(med.startDate, time);
@@ -1649,7 +1726,7 @@ function generateMedicationICS(dog, med){
     const endTotalMin = h*60 + m + 15; // a 15-minute reminder block
     const endTime = `${icsPad(Math.floor(endTotalMin/60)%24)}:${icsPad(endTotalMin%60)}`;
     const dtend = icsFloatingDateTime(med.startDate, endTime);
-    let rrule = "RRULE:FREQ=DAILY";
+    let rrule = "RRULE:FREQ=" + icsFreq;
     if(med.endDate) rrule += ";UNTIL=" + icsFloatingDateTime(med.endDate, time);
     const summary = icsEscapeText(`${dog.name}'s medication: ${med.name}`);
     const descParts = [`Dose: ${med.dose||"—"}`];
@@ -1658,6 +1735,31 @@ function generateMedicationICS(dog, med){
     events += `BEGIN:VEVENT\r\nUID:${sk.uid()}@sidekick\r\nDTSTAMP:${dtstamp}\r\nDTSTART:${dtstart}\r\nDTEND:${dtend}\r\n${rrule}\r\nSUMMARY:${summary}\r\nDESCRIPTION:${description}\r\nEND:VEVENT\r\n`;
   });
   return `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sidekick//Medication Reminder//EN\r\nCALSCALE:GREGORIAN\r\n${events}END:VCALENDAR\r\n`;
+}
+// A single, non-recurring event -- unlike medication, a vet visit or a
+// vaccination's next-due date is a one-off appointment, not a repeating
+// schedule.
+function generateSingleEventICS(summaryText, descriptionText, dateStr, timeStr){
+  const now = new Date();
+  const dtstamp = now.toISOString().replace(/[-:]/g,"").split(".")[0] + "Z";
+  const time = timeStr || "09:00";
+  const dtstart = icsFloatingDateTime(dateStr, time);
+  const [h,m] = time.split(":").map(Number);
+  const endTotalMin = h*60 + m + 30; // a 30-minute default block for an appointment/reminder
+  const endTime = `${icsPad(Math.floor(endTotalMin/60)%24)}:${icsPad(endTotalMin%60)}`;
+  const dtend = icsFloatingDateTime(dateStr, endTime);
+  const summary = icsEscapeText(summaryText);
+  const description = icsEscapeText(descriptionText||"");
+  return `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sidekick//Reminder//EN\r\nCALSCALE:GREGORIAN\r\nBEGIN:VEVENT\r\nUID:${sk.uid()}@sidekick\r\nDTSTAMP:${dtstamp}\r\nDTSTART:${dtstart}\r\nDTEND:${dtend}\r\nSUMMARY:${summary}\r\nDESCRIPTION:${description}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`;
+}
+function generateVetVisitICS(dog, visit){
+  const descParts = [];
+  if(visit.vetName) descParts.push(`Vet: ${visit.vetName}`);
+  if(visit.notes) descParts.push(visit.notes);
+  return generateSingleEventICS(`${dog.name}'s vet visit: ${visit.reason}`, descParts.join(" — "), visit.date, visit.time);
+}
+function generateVaccinationICS(dog, vac){
+  return generateSingleEventICS(`${dog.name}'s ${vac.name} vaccination due`, vac.notes||"", vac.nextDueDate);
 }
 function downloadTextFile(filename, content, mimeType){
   const blob = new Blob([content], {type: mimeType+";charset=utf-8"});
@@ -1674,9 +1776,15 @@ function downloadTextFile(filename, content, mimeType){
 function openMedicationTracker(){
   const dog = sk.getCurrentDog();
   if(!dog){ sk.showToast("Add a dog first."); return; }
+  let frequencyType = "daily";
   let timesPerDay = 1;
 
   function fmtTimes(times){ return times.join(", "); }
+  function fmtFrequencyLabel(m){
+    if(m.frequencyType === "weekly") return `Weekly at ${m.times[0]}`;
+    if(m.frequencyType === "monthly") return `Monthly at ${m.times[0]}`;
+    return `${m.times.length>1 ? m.times.length+"x daily" : "Daily"} at ${fmtTimes(m.times)}`;
+  }
   function fmtDateRange(m){
     const start = sk.fmtDate(m.startDate);
     return m.endDate ? `${start} – ${sk.fmtDate(m.endDate)}` : `${start} – ongoing`;
@@ -1685,6 +1793,7 @@ function openMedicationTracker(){
   function render(){
     const meds = sk.getMedications(dog.id);
     sk.openModal(`
+      <img src="images/hero-medication.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;" onerror="this.style.display='none';">
       <h3>${sk.esc(dog.name)}'s medication</h3>
       <div class="section-label" role="heading" aria-level="2">Add a medication</div>
       <div class="card">
@@ -1693,12 +1802,13 @@ function openMedicationTracker(){
           <input type="text" id="med_name" placeholder="e.g. Metacam" required>
           <label for="med_dose">Dose</label>
           <input type="text" id="med_dose" placeholder="e.g. 1.5ml or 10mg">
-          <label for="med_times_label">Times per day</label>
-          <div class="chip-group" id="med_freq">
-            <button type="button" class="chip selected" data-val="1">Once</button>
-            <button type="button" class="chip" data-val="2">Twice</button>
-            <button type="button" class="chip" data-val="3">Three times</button>
+          <label for="med_frequency_label">Frequency</label>
+          <div class="chip-group" id="med_frequency">
+            <button type="button" class="chip selected" data-val="daily">Daily</button>
+            <button type="button" class="chip" data-val="weekly">Weekly</button>
+            <button type="button" class="chip" data-val="monthly">Monthly</button>
           </div>
+          <div id="med_freq_sub"></div>
           <div id="med_time_inputs"></div>
           <label for="med_start">Start date</label>
           <input type="date" id="med_start" value="${new Date().toISOString().slice(0,10)}" required>
@@ -1717,7 +1827,7 @@ function openMedicationTracker(){
             <div class="row-tab" style="background:var(--ochre)"></div>
             <div class="row-body">
               <div class="row-title">${sk.esc(m.name)}${m.dose?` · ${sk.esc(m.dose)}`:""}</div>
-              <div class="row-meta">${fmtTimes(m.times)} · ${fmtDateRange(m)}${m.notes?` · ${sk.esc(m.notes)}`:""}</div>
+              <div class="row-meta">${fmtFrequencyLabel(m)} · ${fmtDateRange(m)}${m.notes?` · ${sk.esc(m.notes)}`:""}</div>
             </div>
             <button type="button" class="icon-btn" data-ics="${m.id}" aria-label="Download calendar reminder" style="width:32px; height:32px; font-size:15px;">📅</button>
             <button type="button" class="icon-btn" data-delete-med="${m.id}" aria-label="Delete this medication" style="width:32px; height:32px; font-size:14px;">🗑️</button>
@@ -1726,21 +1836,49 @@ function openMedicationTracker(){
       </div>` : `<p style="color:var(--ink-soft); font-size:13px; text-align:center;">No medications logged yet.</p>`}
     `);
 
+    function renderFreqSub(){
+      const sub = document.getElementById("med_freq_sub");
+      if(frequencyType === "daily"){
+        sub.innerHTML = `
+          <label for="med_times_label">Times per day</label>
+          <div class="chip-group" id="med_times_chip">
+            <button type="button" class="chip${timesPerDay===1?" selected":""}" data-val="1">Once</button>
+            <button type="button" class="chip${timesPerDay===2?" selected":""}" data-val="2">Twice</button>
+            <button type="button" class="chip${timesPerDay===3?" selected":""}" data-val="3">Three times</button>
+          </div>
+        `;
+        document.getElementById("med_times_chip").addEventListener("click", e=>{
+          const b = e.target.closest(".chip"); if(!b) return;
+          document.querySelectorAll("#med_times_chip .chip").forEach(c=>c.classList.remove("selected"));
+          b.classList.add("selected");
+          timesPerDay = Number(b.dataset.val);
+          renderTimeInputs();
+        });
+      }else{
+        sub.innerHTML = `<p style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 10px;">${frequencyType==="weekly" ? "Repeats every 7 days from the start date." : "Repeats monthly on the start date's day of month."}</p>`;
+      }
+    }
+
     function renderTimeInputs(){
       const wrap = document.getElementById("med_time_inputs");
-      const defaultTimes = ["08:00","14:00","20:00"]; // sensible spread across the day for 1/2/3 doses
-      wrap.innerHTML = Array.from({length:timesPerDay}).map((_,i)=>`
-        <label for="med_time_${i}">${timesPerDay>1?`Dose ${i+1} time`:"Time"}</label>
-        <input type="time" id="med_time_${i}" value="${timesPerDay===2 ? ["08:00","20:00"][i] : defaultTimes[i]}" required>
+      const count = frequencyType === "daily" ? timesPerDay : 1;
+      const defaultTimes = ["08:00","14:00","20:00"]; // sensible spread across the day for 1/2/3 daily doses
+      wrap.innerHTML = Array.from({length:count}).map((_,i)=>`
+        <label for="med_time_${i}">${count>1?`Dose ${i+1} time`:"Time"}</label>
+        <input type="time" id="med_time_${i}" value="${count===2 ? ["08:00","20:00"][i] : defaultTimes[i]||"08:00"}" required>
       `).join("");
     }
+
+    renderFreqSub();
     renderTimeInputs();
 
-    document.getElementById("med_freq").addEventListener("click", e=>{
+    document.getElementById("med_frequency").addEventListener("click", e=>{
       const b = e.target.closest(".chip"); if(!b) return;
-      document.querySelectorAll("#med_freq .chip").forEach(c=>c.classList.remove("selected"));
+      document.querySelectorAll("#med_frequency .chip").forEach(c=>c.classList.remove("selected"));
       b.classList.add("selected");
-      timesPerDay = Number(b.dataset.val);
+      frequencyType = b.dataset.val;
+      if(frequencyType !== "daily") timesPerDay = 1;
+      renderFreqSub();
       renderTimeInputs();
     });
 
@@ -1751,10 +1889,12 @@ function openMedicationTracker(){
       const start = document.getElementById("med_start").value;
       const end = document.getElementById("med_end").value;
       const notes = document.getElementById("med_notes").value.trim();
-      const times = Array.from({length:timesPerDay}).map((_,i)=>document.getElementById(`med_time_${i}`).value).filter(Boolean).sort();
-      if(!name || !start || times.length !== timesPerDay) return;
-      timesPerDay = 1; // reset the form's frequency selection for next time
-      sk.addMedication(dog.id, name, dose, times, start, end, notes);
+      const count = frequencyType === "daily" ? timesPerDay : 1;
+      const times = Array.from({length:count}).map((_,i)=>document.getElementById(`med_time_${i}`).value).filter(Boolean).sort();
+      if(!name || !start || times.length !== count) return;
+      const savedFrequency = frequencyType;
+      frequencyType = "daily"; timesPerDay = 1; // reset the form's selections for next time
+      sk.addMedication(dog.id, name, dose, savedFrequency, times, start, end, notes);
       render();
     });
 
@@ -1767,6 +1907,139 @@ function openMedicationTracker(){
         const ics = generateMedicationICS(dog, med);
         const safeName = med.name.replace(/[^a-z0-9]+/gi,"-").toLowerCase();
         downloadTextFile(`${safeName}-reminder.ics`, ics, "text/calendar");
+        sk.showToast("Calendar reminder downloaded — open it to add to your calendar.");
+      });
+    });
+  }
+  render();
+}
+
+function openVetVisitTracker(){
+  const dog = sk.getCurrentDog();
+  if(!dog){ sk.showToast("Add a dog first."); return; }
+
+  function render(){
+    const visits = sk.getVetVisits(dog.id);
+    sk.openModal(`
+      <img src="images/hero-vet-visits.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;" onerror="this.style.display='none';">
+      <h3>${sk.esc(dog.name)}'s vet visits</h3>
+      <div class="section-label" role="heading" aria-level="2">Log a visit</div>
+      <div class="card">
+        <form id="vetForm">
+          <label for="vet_reason">Reason</label>
+          <input type="text" id="vet_reason" placeholder="e.g. Annual checkup" required>
+          <label for="vet_name">Vet / clinic <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+          <input type="text" id="vet_name" placeholder="e.g. Riverside Vets">
+          <label for="vet_date">Date</label>
+          <input type="date" id="vet_date" value="${new Date().toISOString().slice(0,10)}" required>
+          <label for="vet_time">Time <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+          <input type="time" id="vet_time">
+          <label for="vet_notes">Notes <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+          <input type="text" id="vet_notes" placeholder="e.g. bring vaccination card">
+          <button type="submit" class="btn btn-primary btn-block">Save visit</button>
+        </form>
+      </div>
+
+      ${visits.length ? `<div class="section-label" role="heading" aria-level="2">History</div>
+      <div class="row-list">
+        ${visits.map(v=>`
+          <div class="row" style="cursor:default;">
+            <div class="row-tab" style="background:var(--sky)"></div>
+            <div class="row-body">
+              <div class="row-title">${sk.esc(v.reason)}${v.vetName?` · ${sk.esc(v.vetName)}`:""}</div>
+              <div class="row-meta">${sk.fmtDate(v.date)}${v.time?` at ${v.time}`:""}${v.notes?` · ${sk.esc(v.notes)}`:""}</div>
+            </div>
+            <button type="button" class="icon-btn" data-vet-ics="${v.id}" aria-label="Download calendar reminder" style="width:32px; height:32px; font-size:15px;">📅</button>
+            <button type="button" class="icon-btn" data-delete-vet="${v.id}" aria-label="Delete this visit" style="width:32px; height:32px; font-size:14px;">🗑️</button>
+          </div>
+        `).join("")}
+      </div>` : `<p style="color:var(--ink-soft); font-size:13px; text-align:center;">No vet visits logged yet.</p>`}
+    `);
+
+    document.getElementById("vetForm").addEventListener("submit", e=>{
+      e.preventDefault();
+      const reason = document.getElementById("vet_reason").value.trim();
+      const vetName = document.getElementById("vet_name").value.trim();
+      const date = document.getElementById("vet_date").value;
+      const time = document.getElementById("vet_time").value;
+      const notes = document.getElementById("vet_notes").value.trim();
+      if(!reason || !date) return;
+      sk.addVetVisit(dog.id, date, time, reason, vetName, notes);
+      render();
+    });
+    document.querySelectorAll("[data-delete-vet]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{ sk.deleteVetVisit(btn.dataset.deleteVet); render(); });
+    });
+    document.querySelectorAll("[data-vet-ics]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const visit = visits.find(v=>v.id===btn.dataset.vetIcs);
+        const ics = generateVetVisitICS(dog, visit);
+        downloadTextFile(`vet-visit-reminder.ics`, ics, "text/calendar");
+        sk.showToast("Calendar reminder downloaded — open it to add to your calendar.");
+      });
+    });
+  }
+  render();
+}
+
+function openVaccinationTracker(){
+  const dog = sk.getCurrentDog();
+  if(!dog){ sk.showToast("Add a dog first."); return; }
+
+  function render(){
+    const vaccinations = sk.getVaccinations(dog.id);
+    sk.openModal(`
+      <img src="images/hero-vaccinations.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;" onerror="this.style.display='none';">
+      <h3>${sk.esc(dog.name)}'s vaccinations</h3>
+      <div class="section-label" role="heading" aria-level="2">Log a vaccination</div>
+      <div class="card">
+        <form id="vacForm">
+          <label for="vac_name">Vaccine</label>
+          <input type="text" id="vac_name" placeholder="e.g. Rabies, DHPP, Leptospirosis" required>
+          <label for="vac_date">Date given</label>
+          <input type="date" id="vac_date" value="${new Date().toISOString().slice(0,10)}" required>
+          <label for="vac_next">Next due date <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+          <input type="date" id="vac_next">
+          <label for="vac_notes">Notes <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+          <input type="text" id="vac_notes" placeholder="e.g. batch number, reaction notes">
+          <button type="submit" class="btn btn-primary btn-block">Save vaccination</button>
+        </form>
+      </div>
+
+      ${vaccinations.length ? `<div class="section-label" role="heading" aria-level="2">History</div>
+      <div class="row-list">
+        ${vaccinations.map(v=>`
+          <div class="row" style="cursor:default;">
+            <div class="row-tab" style="background:var(--forest)"></div>
+            <div class="row-body">
+              <div class="row-title">${sk.esc(v.name)}</div>
+              <div class="row-meta">Given ${sk.fmtDate(v.dateGiven)}${v.nextDueDate?` · Next due ${sk.fmtDate(v.nextDueDate)}`:""}${v.notes?` · ${sk.esc(v.notes)}`:""}</div>
+            </div>
+            ${v.nextDueDate ? `<button type="button" class="icon-btn" data-vac-ics="${v.id}" aria-label="Download calendar reminder" style="width:32px; height:32px; font-size:15px;">📅</button>` : ""}
+            <button type="button" class="icon-btn" data-delete-vac="${v.id}" aria-label="Delete this vaccination" style="width:32px; height:32px; font-size:14px;">🗑️</button>
+          </div>
+        `).join("")}
+      </div>` : `<p style="color:var(--ink-soft); font-size:13px; text-align:center;">No vaccinations logged yet.</p>`}
+    `);
+
+    document.getElementById("vacForm").addEventListener("submit", e=>{
+      e.preventDefault();
+      const name = document.getElementById("vac_name").value.trim();
+      const dateGiven = document.getElementById("vac_date").value;
+      const nextDue = document.getElementById("vac_next").value;
+      const notes = document.getElementById("vac_notes").value.trim();
+      if(!name || !dateGiven) return;
+      sk.addVaccination(dog.id, name, dateGiven, nextDue, notes);
+      render();
+    });
+    document.querySelectorAll("[data-delete-vac]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{ sk.deleteVaccination(btn.dataset.deleteVac); render(); });
+    });
+    document.querySelectorAll("[data-vac-ics]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const vac = vaccinations.find(v=>v.id===btn.dataset.vacIcs);
+        const ics = generateVaccinationICS(dog, vac);
+        downloadTextFile(`vaccination-reminder.ics`, ics, "text/calendar");
         sk.showToast("Calendar reminder downloaded — open it to add to your calendar.");
       });
     });
@@ -1911,7 +2184,36 @@ window.__sk.suggestedLesson = suggestedLesson;
 window.__sk.openClickerModal = openClickerModal;
 window.__sk.openGamesModal = openGamesModal;
 window.__sk.openWeightTracker = openWeightTracker;
+// A single entry point for every health-related tracker, rather than
+// scattering four separate rows across Profile.
+function openHealthHub(){
+  const dog = sk.getCurrentDog();
+  if(!dog){ sk.showToast("Add a dog first."); return; }
+  const weightCount = sk.getWeightLogs(dog.id).length;
+  const medCount = sk.getMedications(dog.id).length;
+  const vetCount = sk.getVetVisits(dog.id).length;
+  const vacCount = sk.getVaccinations(dog.id).length;
+  const rowMeta = n => n ? `${n} logged` : "Nothing logged yet";
+  sk.openModal(`
+    <img src="images/hero-health-hub.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;" onerror="this.style.display='none';">
+    <h3 style="text-align:center; margin-bottom:16px;">${sk.esc(dog.name)}'s health</h3>
+    <div class="row-list">
+      <button class="row" id="hubWeight"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">⚖️ Weight</div><div class="row-meta">${rowMeta(weightCount)}</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="hubMedication"><div class="row-tab" style="background:var(--red)"></div><div class="row-body"><div class="row-title">💊 Medication</div><div class="row-meta">${rowMeta(medCount)}</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="hubVetVisits"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">🩺 Vet visits</div><div class="row-meta">${rowMeta(vetCount)}</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="hubVaccinations"><div class="row-tab" style="background:var(--forest)"></div><div class="row-body"><div class="row-title">💉 Vaccinations</div><div class="row-meta">${rowMeta(vacCount)}</div></div><span class="row-chev">›</span></button>
+    </div>
+  `);
+  document.getElementById("hubWeight").addEventListener("click", ()=>{ sk.closeModal(); sk.openWeightTracker(); });
+  document.getElementById("hubMedication").addEventListener("click", ()=>{ sk.closeModal(); sk.openMedicationTracker(); });
+  document.getElementById("hubVetVisits").addEventListener("click", ()=>{ sk.closeModal(); sk.openVetVisitTracker(); });
+  document.getElementById("hubVaccinations").addEventListener("click", ()=>{ sk.closeModal(); sk.openVaccinationTracker(); });
+}
+
 window.__sk.openMedicationTracker = openMedicationTracker;
+window.__sk.openVetVisitTracker = openVetVisitTracker;
+window.__sk.openVaccinationTracker = openVaccinationTracker;
+window.__sk.openHealthHub = openHealthHub;
 window.__sk.todaysSessionLessons = todaysSessionLessons;
 window.__sk.recentStruggleNote = recentStruggleNote;
 window.__sk.overallProgressPercent = overallProgressPercent;
@@ -1919,6 +2221,7 @@ window.__sk.longestStreakEver = longestStreakEver;
 window.__sk.totalLessonsCompleted = totalLessonsCompleted;
 window.__sk.skillSummary = skillSummary;
 window.__sk.trainingStreak = trainingStreak;
+window.__sk.getTodaysHealthItems = getTodaysHealthItems;
 window.__sk.walkStreak = walkStreak;
 window.__sk.checkHiddenAchievements = checkHiddenAchievements;
 window.__sk.HIDDEN_ACHIEVEMENTS = HIDDEN_ACHIEVEMENTS;
@@ -3107,6 +3410,7 @@ function storageEstimateText(){
 function openCompareDogs(){
   const dogs = sk.DB.dogs;
   sk.openModal(`
+    <img src="images/hero-compare-dogs.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;" onerror="this.style.display='none';">
     <h3 style="text-align:center; margin-bottom:16px;">Compare dogs</h3>
     ${dogs.map(d=>{
       const pct = sk.overallProgressPercent(d.id);
@@ -3149,6 +3453,7 @@ function renderProfile(container){
   sk.setTopbar("Profile", "Your dog's details & achievements", "");
   const dog = sk.getCurrentDog();
   container.innerHTML = `
+    <img src="images/hero-profile.jpg" alt="" style="width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; margin-bottom:14px;" onerror="this.style.display='none';">
     <div class="section-label" role="heading" aria-level="2">Dogs</div>
     <div class="row-list">
       ${sk.DB.dogs.map(d=>`
@@ -3159,8 +3464,7 @@ function renderProfile(container){
         </button>`).join("")}
       <button class="row" id="addDogRow"><div class="avatar" style="background:var(--line); color:var(--ink-soft);">+</div><div class="row-body"><div class="row-title">Add another dog</div></div></button>
       ${sk.DB.dogs.length > 1 ? `<button class="row" id="compareDogsRow"><div class="row-tab" style="background:var(--sky)"></div><div class="row-body"><div class="row-title">Compare dogs</div><div class="row-meta">Progress side by side</div></div><span class="row-chev">›</span></button>` : ""}
-      <button class="row" id="trackWeightRow"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">⚖️ Track weight</div><div class="row-meta">Log and chart weight over time</div></div><span class="row-chev">›</span></button>
-      <button class="row" id="medicationRow"><div class="row-tab" style="background:var(--red)"></div><div class="row-body"><div class="row-title">💊 Medication</div><div class="row-meta">Log doses & download calendar reminders</div></div><span class="row-chev">›</span></button>
+      <button class="row" id="healthHubRow"><div class="row-tab" style="background:var(--ochre)"></div><div class="row-body"><div class="row-title">🏥 Health</div><div class="row-meta">Weight, medication, vet visits & vaccinations</div></div><span class="row-chev">›</span></button>
     </div>
 
     <div class="section-label" role="heading" aria-level="2">${dog?sk.esc(dog.name)+"'s achievements":"Achievements"}</div>
@@ -3205,8 +3509,7 @@ function renderProfile(container){
   container.querySelector("#addDogRow").addEventListener("click", ()=>sk.renderDogForm(null));
   const compareBtn = container.querySelector("#compareDogsRow");
   if(compareBtn) compareBtn.addEventListener("click", openCompareDogs);
-  container.querySelector("#trackWeightRow").addEventListener("click", ()=>sk.openWeightTracker());
-  container.querySelector("#medicationRow").addEventListener("click", ()=>sk.openMedicationTracker());
+  container.querySelector("#healthHubRow").addEventListener("click", ()=>sk.openHealthHub());
   container.querySelector("#reportBtn").addEventListener("click", openTrainingReport);
   container.querySelector("#certBtn").addEventListener("click", openCertificateList);
   container.querySelector("#printLogBtn").addEventListener("click", openPrintableLog);
@@ -3860,9 +4163,21 @@ function importBackup(e){
   };
   reader.readAsText(file);
 }
-const APP_VERSION = "8.7.0";
+const APP_VERSION = "8.9.0";
 
 const CHANGELOG = [
+  { version: "8.9.0", notes: [
+    "Applied the final batch of hero images: Vaccinations, Vet visits, Health hub, Medication, Compare dogs, and Profile — completing the full visual pass across the app. 14 hero images total now, every browsing/landing screen covered",
+  ]},
+  { version: "8.8.1", notes: [
+    "Wired up hero image slots for the Health hub, Vet visits, and Vaccinations screens ahead of receiving the actual photos — each gracefully hides itself (no broken-image icon, no layout gap) until its file exists, then will appear automatically the moment it's added",
+  ]},
+  { version: "8.8.0", notes: [
+    "Medication now supports weekly and monthly frequency (e.g. a monthly flea treatment), not just daily doses — the calendar reminder correctly recurs weekly or monthly to match",
+    "New: Vet visits and Vaccinations tracking, alongside Weight and Medication under a single new Health hub (Profile → 🏥 Health) rather than four separate rows. Both support a one-off calendar reminder download — vet visits for the appointment itself, vaccinations for the next-due date when one's set",
+    "New: a \"Today's health\" card on Home — shows any medication due today, vet visits within a week, or vaccinations due within a week, and only appears when there's actually something to show",
+    "Verified the weekly/monthly medication due-today logic precisely, not just that it runs: confirmed a weekly medication started exactly 7 days ago correctly shows as due today while one started 3 days ago correctly doesn't, and a monthly medication due on today's date last month correctly recurs",
+  ]},
   { version: "8.7.0", notes: [
     "New: Medication tracking (Profile → 💊 Medication) — log a medication's name, dose, frequency (once/twice/three times daily with individual times), start date, and an optional end date or leave it ongoing",
     "Each medication can generate a real .ics calendar file — a genuine recurring daily reminder your phone's own calendar app handles natively, with one event per dose time and a correct end date if one was set. Built with plain text generation, no external library or CDN needed at all, unlike the certificate PDF feature",
